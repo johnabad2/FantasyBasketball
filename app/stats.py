@@ -13,7 +13,10 @@ DATA = ROOT / "data"
 HISTORY = DATA / "history.db"
 NICKNAMES = ROOT / "config" / "nicknames.json"
 
-BOX = ["PTS", "REB", "AST", "STL", "BLK", "3PM", "TO", "FG%", "FT%", "MPG"]
+BOX = ["PTS", "REB", "AST", "STL", "BLK", "TO", "FG", "3P", "FT", "MPG"]
+# shooting columns show volume and efficiency together: made-attempted per game, then the %
+SHOOTING = {"FG": ("FGM", "FGA"), "3P": ("3PM", "3PA"), "FT": ("FTM", "FTA")}
+SHOOTING_WIDTHS = {"FG": 135, "3P": 120, "FT": 120}  # pixel widths for these columns in the window
 SPLITS = ["total", "last_7", "last_15", "last_30", "projected"]
 SPLIT_LABELS = {"total": "season", "last_7": "last 7 days", "last_15": "last 15 days",
                 "last_30": "last 30 days", "projected": "projected"}
@@ -59,7 +62,20 @@ def fp_per_game(split, rules):
     return sum(avg.get(stat, 0) * pts for stat, pts in rules.items())
 
 
+def shooting(split, stat):
+    """(made, attempted, pct) per game for FG / 3P / FT, or None if ESPN has no numbers."""
+    made_key, att_key = SHOOTING[stat]
+    avg = split.get("avg") or {}
+    made, att = avg.get(made_key), avg.get(att_key)
+    if made is None or att is None:
+        return None
+    return made, att, (made / att * 100 if att else 0.0)
+
+
 def box(split, stat):
+    if stat in SHOOTING:
+        s = shooting(split, stat)
+        return "-" if s is None else f"{s[0]:.1f}-{s[1]:.1f} {s[2]:.0f}%"
     v = (split.get("avg") or {}).get(stat)
     if v is None:
         return "-"
@@ -281,7 +297,13 @@ def player_row(p, year, rules, team_name, owner):
         row[f"{k}_fp_per_game"] = round(fp_per_game(s, rules), 2)
     s, _ = season_or_projection(p, year)
     for stat in BOX:
-        row[f"{stat}_per_game"] = box(s, stat)
+        if stat in SHOOTING:  # separate columns so the CSV stays numeric in Excel
+            made, att, pct = shooting(s, stat) or ("", "", "")
+            row[f"{SHOOTING[stat][0]}_per_game"] = round(made, 2) if made != "" else ""
+            row[f"{SHOOTING[stat][1]}_per_game"] = round(att, 2) if att != "" else ""
+            row[f"{stat}%"] = round(pct, 1) if pct != "" else ""
+        else:
+            row[f"{stat}_per_game"] = box(s, stat)
     return row
 
 

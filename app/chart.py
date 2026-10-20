@@ -123,6 +123,7 @@ class GameChart(tk.Canvas):
 
         # x labels: each game when few, otherwise the first game of each month
         last_month = None
+        months = []  # (x, label) of the first game in each month
         for i, g in enumerate(self.games):
             cx = x0 + (i + 0.5) * slot
             if n <= 16:
@@ -130,8 +131,13 @@ class GameChart(tk.Canvas):
                 self.create_text(cx, y1 + 25, text=g["opp"].split()[-1], fill=MUTED, font=(FONT, 8))
             elif g["date"].month != last_month and cx < x1 - 28:  # skip a label that would hang off the edge
                 last_month = g["date"].month
-                self.create_line(cx, y1, cx, y1 + 4, fill=AXIS)
-                self.create_text(cx, y1 + 14, text=g["date"].strftime("%b"), anchor="w", fill=MUTED, font=(FONT, 9))
+                months.append((cx, g["date"].strftime("%b")))
+        # if a player missed most of a month, two month starts land close together: keep the later one
+        for (cx, label), nxt in zip(months, months[1:] + [(None, None)]):
+            if nxt[0] is not None and nxt[0] - cx < 34:
+                continue
+            self.create_line(cx, y1, cx, y1 + 4, fill=AXIS)
+            self.create_text(cx, y1 + 14, text=label, anchor="w", fill=MUTED, font=(FONT, 9))
         if self.note:
             self.create_text(x0, h - 11, text=self.note, anchor="w", fill=MUTED, font=(FONT, 8))
         self.avg = avg

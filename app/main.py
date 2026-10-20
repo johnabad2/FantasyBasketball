@@ -4,6 +4,7 @@
     .venv\\Scripts\\pythonw app\\main.py --demo   made-up league, no ESPN needed
 """
 import queue
+import re
 import sys
 import threading
 import tkinter as tk
@@ -20,7 +21,7 @@ import stats
 from chart import GameChart
 from compare import SERIES, ParallelChart, axes_for, profile
 import trade
-from stats import BOX, SPLIT_LABELS, SPLITS, box, fp_per_game, games, owner_names, split_of
+from stats import BOX, SHOOTING_WIDTHS, SPLIT_LABELS, SPLITS, box, fp_per_game, games, owner_names, split_of
 
 FONT = ("Segoe UI", 10)
 ACCENT = "#1d6fd8"
@@ -121,7 +122,9 @@ class Table(ttk.Frame):
         try:
             return float(s)
         except ValueError:
-            return None
+            pass
+        m = re.match(r"^(\d+(?:\.\d+)?)-\d", s)  # shooting cell '8.6-17.5 49%': sort by made per game
+        return float(m.group(1)) if m else None
 
     def sort(self, col):
         cells = [(self.tree.set(k, col), k) for k in self.tree.get_children("")]
@@ -337,7 +340,7 @@ class App(tk.Tk):
         self.league_roster = Table(f, ("player", "pos", "nba", "slot", "status", "gp", "fp tot", "fp/g",
                                        "proj/g", "vs proj", *BOX),
                                    text_cols=("player", "pos", "nba", "slot", "status"), wide=("player",),
-                                   on_open=lambda v: self.show_player(v[0]))
+                                   widths=SHOOTING_WIDTHS, on_open=lambda v: self.show_player(v[0]))
         self.league_roster.pack(fill="both", expand=True)
         ttk.Label(f, text="* no games yet: numbers are ESPN's projection. Double-click a player for details.",
                   style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
@@ -392,10 +395,11 @@ class App(tk.Tk):
         self.player_head = tk.StringVar(value="Search a player, or double-click one in any table.")
         ttk.Label(right, textvariable=self.player_head, font=(FONT[0], 12, "bold")).pack(anchor="w", pady=(4, 8))
         self.player_splits = Table(right, ("split", "gp", "fp/g", *BOX), text_cols=("split",),
-                                   wide=("split",), height=5)
+                                   wide=("split",), height=5, widths=SHOOTING_WIDTHS)
         self.player_splits.pack(fill="both", expand=True)
         # Clicking a stat's column header charts that stat game by game.
-        header_stat = {"fp/g": "FP", "MPG": "MIN", **{s: s for s in gamelog.CHART_STATS}}
+        header_stat = {"fp/g": "FP", "MPG": "MIN", "FG": "FGM", "3P": "3PM", "FT": "FTM",
+                       **{s: s for s in gamelog.CHART_STATS}}
         for col in ("fp/g", *BOX):
             if col in header_stat:
                 self.player_splits.tree.heading(col, command=lambda s=header_stat[col]: self.chart_stat.set(s))
