@@ -793,7 +793,8 @@ class App(tk.Tk):
         return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected,
                     injuries=injuries, plan=plan,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
-                    mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3),
+                    mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
+                                                              leaving=feed.leaving(league, me.team_id) if real else ()),
                     activity=activity, chat=chat_msgs, trade_feed=trades)
 
     def _show(self, d):

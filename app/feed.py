@@ -52,7 +52,7 @@ def trades(league, limit=100):
                 side(m.get("from"))["drops"].append(player(pid))
             else:
                 side(m.get("from"))
-                side(m.get("to"))["receives"].append(player(pid))
+                side(m.get("to"))["receives"].append({**player(pid), "from": m.get("from")})
                 moved.add((pid, m.get("to")))
         when = datetime.fromtimestamp(topic["date"] / 1000)
         done = any(m["messageTypeId"] == PROCESSED for m in msgs)
@@ -63,3 +63,18 @@ def trades(league, limit=100):
     completed = {t["key"] for t in out if t["kind"] == "completed"}
     out = [t for t in out if t["kind"] == "completed" or t["key"] not in completed]
     return sorted(out, key=lambda t: t["when"], reverse=True)
+
+
+def leaving(league, team_id):
+    """Ids of this team's players in accepted trades that haven't gone through yet: never suggest
+    dropping or trading them (that would break the deal). Cached on the league object."""
+    cache = getattr(league, "_fh_leaving", None)
+    if cache is None:
+        cache = {}
+        for t in trades(league) if getattr(league, "pro_schedule", None) else []:
+            if t["kind"] == "accepted":
+                for team in t["sides"]:
+                    for p in team["receives"]:
+                        cache.setdefault(p["from"], set()).add(p["id"])
+        league._fh_leaving = cache
+    return cache.get(team_id, set())

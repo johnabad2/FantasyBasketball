@@ -152,8 +152,13 @@ The alerts:
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Sell high | Your player is 25%+ above their base right now |
 | Slumping | Your player is 25%+ below base. Usually hold, don't panic-sell |
+| Roster balance | More than 3 players share a main position (e.g. 4 PGs), or fewer than 2 healthy players can play one (e.g. only 1 C) |
 
 Tune any of these under `thresholds` in `config\config.json`.
+
+Pickup, streamer and trade suggestions never create a balance problem you don't already have
+(a 4th PG, or dropping your only backup C). They also never touch players in a trade that's
+waiting to go through, since dropping one would break the deal.
 
 ## Automatic checks
 

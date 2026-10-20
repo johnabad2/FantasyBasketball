@@ -6,7 +6,7 @@ and he isn't injured - an OUT player counts again from ESPN's expected return da
 import time
 from datetime import date, datetime, timedelta
 
-from fantasy import OUT_STATUSES, form_of
+from fantasy import OUT_STATUSES, form_of, unbalances
 from projections import availability, nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
@@ -161,7 +161,8 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
     light_days = {d["day"] for d in base_week if d["filled"] < d["slots"]}
     # drop candidates: the lowest-value players, plus anyone injured (they score nothing meanwhile)
     from fantasy import load_keep
-    keep = load_keep()  # players you've said never to drop
+    import feed
+    keep = load_keep() | feed.leaving(league, team.team_id)  # never drop: kept, or already traded away
     by_value = sorted((p for p in roster if p.lineupSlot != "IR" and p.playerId not in keep),
                       key=lambda p: values[p.playerId])
     drops = list(dict.fromkeys(by_value[:drop_pool] + [p for p in roster if (p.injuryStatus or "") in OUT_STATUSES
@@ -178,7 +179,7 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
         if not games:
             continue
         vals = {**values, fa.playerId: f.baseline}
-        if free_spot:  # simplest case: just add him
+        if free_spot and not unbalances(roster, [fa]):  # simplest case: just add him
             gain = sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base
             if gain > 0.5:
                 out.append({"fa": f, "open_spot": True, "ir": None, "ir_certain": False, "drop": None,
@@ -186,7 +187,11 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
                             "drop_gain": None, "gain": gain, "games": len(games),
                             "light_games": sum(1 for d in games if d in light_days)})
             continue
-        ir = ir_moves[0] if ir_moves else None  # (player, back, certain): nobody leaves your team
+        if free_spot:
+            continue  # adding him would unbalance your positions
+        ir = ir_moves[0] if ir_moves else None
+        if ir and unbalances(roster, [fa]):
+            ir = None  # the IR'd player stays on your team, so this is just adding him  # (player, back, certain): nobody leaves your team
         ir_gain = (sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base) if ir else None
         best_drop = None
         after = base_week[-1]["day"] + 1  # first day after the planning window
@@ -194,6 +199,8 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
         for drop in drops:
             if values[drop.playerId] > f.baseline + LONG_TERM_SLACK:
                 continue  # dropping is permanent: never lose a better player for a one-week stream
+            if unbalances(roster, [fa], [drop]):
+                continue  # e.g. a 4th PG, or dropping your only backup C
             trial = [p for p in roster if p is not drop] + [fa]
             gain = sum(d["points"] for d in week(league, trial, vals, injuries, days)) - base
             # after this week: his points vs the dropped player's, over all their remaining games

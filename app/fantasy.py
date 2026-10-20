@@ -32,6 +32,9 @@ KEEP = ROOT / "config" / "keep.json"
 OUT_STATUSES = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 SHAKY_STATUSES = {"DAY_TO_DAY", "QUESTIONABLE", "DOUBTFUL"}
 BENCH_SLOTS = {"BE", "IR"}
+POSITIONS = ("PG", "SG", "SF", "PF", "C")
+MAX_AT_POSITION = 3  # more players than this whose main position is the same = too many
+MIN_COVER = 2        # fewer healthy players than this who can play a position = too thin
 
 DEFAULT_THRESHOLDS = {
     "trend_pct": 0.25,       # recent form this far above/below baseline counts as hot/slumping
@@ -105,6 +108,56 @@ def form_of(player, year):
         baseline,
     )
     return Form(player, round(baseline, 2), round(recent, 2), games)
+
+
+# ---------------------------------------------------------------- position balance
+
+def balance_problems(players):
+    """{(kind, pos): [names]} for an unbalanced roster. 'many' = more than MAX_AT_POSITION players
+    whose main position is pos (IR included: they come back); 'thin' = fewer than MIN_COVER healthy
+    players off IR who can play pos."""
+    problems = {}
+    for pos in POSITIONS:
+        main = [p.name for p in players if p.position == pos]
+        if len(main) > MAX_AT_POSITION:
+            problems[("many", pos)] = main
+        cover = [p.name for p in players if pos in (p.eligibleSlots or [])
+                 and p.lineupSlot != "IR" and (p.injuryStatus or "ACTIVE") not in OUT_STATUSES]
+        if len(cover) < MIN_COVER:
+            problems[("thin", pos)] = cover
+    return problems
+
+
+def describe_problem(kind, pos, names):
+    if kind == "many":
+        return f"{len(names)} {pos}s ({', '.join(names)})"
+    return f"only {len(names)} healthy player{'s' * (len(names) != 1)} who can play {pos}" + \
+        (f" ({', '.join(names)})" if names else "")
+
+
+def unbalances(players, add=(), drop=()):
+    """The balance problems a move would create that your roster doesn't already have, as text.
+    [] means the move is fine (it may still leave an existing problem as it is)."""
+    drop_ids = {p.playerId for p in drop}
+    after = [p for p in players if p.playerId not in drop_ids] + list(add)
+    before = balance_problems(players)
+    return [describe_problem(k, pos, names) for (k, pos), names in balance_problems(after).items()
+            if (k, pos) not in before]
+
+
+def balance_alerts(my_team):
+    alerts = []
+    for (kind, pos), names in balance_problems(my_team.roster).items():
+        if kind == "many":
+            detail = f"{', '.join(names)}. Consider trading one for a position you're short on."
+        else:
+            detail = ((", ".join(names) + ". ") if names else "") + \
+                f"If {'he sits' if len(names) == 1 else 'they sit'}, your {pos} slot can go empty. " \
+                "Consider adding one before you need him."
+        detail = detail.replace(".. ", ". ")  # names like "Scotty Pippen Jr." already end in a dot
+        alerts.append(Alert(f"balance:{kind}:{pos}:{','.join(sorted(names))}", 2,
+                            f"Roster balance: {describe_problem(kind, pos, names).split(' (')[0]}", detail))
+    return alerts
 
 
 # ---------------------------------------------------------------- alerts
@@ -195,30 +248,34 @@ def set_keep(player, keep=True):
     return players
 
 
-def waiver_alerts(mine, free_agents, t):
-    keep = load_keep()
+def waiver_alerts(mine, free_agents, t, leaving=()):
+    keep = load_keep() | set(leaving)  # never drop: kept, or in a trade that's going through
     droppable = sorted((f for f in mine if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
                        key=lambda f: f.worth)
-    alerts = []
-    # Best free agent vs your worst player, next best vs your second worst, and so on.
+    roster = [f.player for f in mine]
+    alerts, used = [], set()
+    # Best free agent vs your worst player, next best vs your second worst, and so on - skipping
+    # swaps that would unbalance your positions (e.g. a 4th PG, or no backup C).
     for fa in sorted(free_agents, key=lambda f: f.worth, reverse=True):
         if len(alerts) >= min(t["max_waiver_alerts"], len(droppable)):
             break
-        worst = droppable[len(alerts)]
-        if fa.healthy and fa.worth > worst.worth * (1 + t["waiver_margin"]):
+        worst = next((d for d in droppable if d.player.playerId not in used
+                      and not unbalances(roster, [fa.player], [d.player])), None)
+        if worst and fa.healthy and fa.worth > worst.worth * (1 + t["waiver_margin"]):
+            used.add(worst.player.playerId)
             alerts.append(Alert(f"fa:{fa.player.playerId}:{worst.player.playerId}", 1,
                                 f"Pick up {fa.player.name}, drop {worst.player.name}",
                                 f"{fmt(fa)}: {nums(fa)}\n      vs {fmt(worst)}: {nums(worst)}"))
     return alerts
 
 
-def trade_ideas(mine, others, t, per_team=1):
+def trade_ideas(mine, others, t, per_team=1, leaving=()):
     """[(team, gain, give, get)], best first. Pairs one of your players with one of theirs where:
     - their player is better on baseline (you gain real value), and
     - their player's recent form is no better than yours (the deal looks fair to them).
     The classic version: sell your hot player, buy their slumping star.
     """
-    keep = load_keep()
+    keep = load_keep() | set(leaving)
     ideas = []
     for team, roster in others:
         found = []
@@ -233,13 +290,15 @@ def trade_ideas(mine, others, t, per_team=1):
                     continue
                 if get.recent > give.recent * 1.05:
                     continue  # they'd be giving up the hotter player; unlikely to accept
+                if unbalances([f.player for f in mine], [get.player], [give.player]):
+                    continue  # would leave you with too many at one position or too few at another
                 found.append((team, gain, give, get))
         ideas += sorted(found, key=lambda x: -x[1])[:per_team]
     return sorted(ideas, key=lambda x: -x[1])
 
 
-def trade_alerts(mine, others, t):
-    ideas = trade_ideas(mine, others, t)
+def trade_alerts(mine, others, t, leaving=()):
+    ideas = trade_ideas(mine, others, t, leaving=leaving)
     return [
         Alert(f"trade:{team.team_id}:{give.player.playerId}:{get.player.playerId}", 2,
               f"Trade idea with {team.team_name}: {give.player.name} for {get.player.name}",
@@ -347,11 +406,13 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
     if injuries is None:
         import news
         injuries = news.injuries() if real else {}
-    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds)
+    import feed
+    leaving = feed.leaving(league, my_team.team_id) if real else set()
+    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds, leaving) + balance_alerts(my_team)
     if real:
         alerts += (status_alerts(mine, injuries) + lineup_alerts(league, my_team, injuries)
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))
-    alerts += trade_alerts(mine, others, thresholds) + form_alerts(mine, thresholds)
+    alerts += trade_alerts(mine, others, thresholds, leaving) + form_alerts(mine, thresholds)
     return sorted(alerts, key=lambda a: a.priority)
 
 
