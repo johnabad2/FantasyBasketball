@@ -70,6 +70,75 @@ def simulate(league, team_a, team_b, send_ids, get_ids):
             "got": [f for f in b if f.player.playerId in get_ids]}
 
 
+def _values(league, team):
+    """{player id: (base value, on injured reserve, name)} for quick what-if math."""
+    out = {}
+    for p in team.roster:
+        out[p.playerId] = (form_of(p, league.year).baseline, (p.injuryStatus or "") == "INJURY_RESERVE", p.name)
+    return out
+
+
+def _strength(vals, slots):
+    return sum(sorted((b for b, ir, _ in vals if not ir), reverse=True)[:slots])
+
+
+def balance(league, team_a, team_b, send=(), get=(), limit=8, max_extra=2):
+    """Trades that come out even. With players already picked (send/get), tries adding up to
+    `max_extra` more players from either side; with nothing picked, searches 1-2 players each way.
+    Best first: both sides gain as much as possible (win-win), then the smallest gap between them.
+    Returns [{'send', 'get', 'da', 'db', 'send_names', 'get_names'}]."""
+    from itertools import combinations
+    A, B = _values(league, team_a), _values(league, team_b)
+    sa, sb = lineup_slots(team_a), lineup_slots(team_b)
+    base_a, base_b = _strength(A.values(), sa), _strength(B.values(), sb)
+
+    def evaluate(s, g):
+        a_after = [v for pid, v in A.items() if pid not in s] + [B[pid] for pid in g]
+        b_after = [v for pid, v in B.items() if pid not in g] + [A[pid] for pid in s]
+        return _strength(a_after, sa) - base_a, _strength(b_after, sb) - base_b
+
+    send, get = frozenset(send), frozenset(get)
+    options = []
+    if send or get:
+        extras = [("a", pid) for pid in A if pid not in send] + [("b", pid) for pid in B if pid not in get]
+        for k in range(1, max_extra + 1):
+            for combo in combinations(extras, k):
+                s = send | {pid for side, pid in combo if side == "a"}
+                g = get | {pid for side, pid in combo if side == "b"}
+                options.append((s, g))
+    else:
+        for i in (1, 2):
+            for j in (1, 2):
+                for s in combinations(A, i):
+                    for g in combinations(B, j):
+                        options.append((frozenset(s), frozenset(g)))
+
+    results = []
+    for s, g in options:
+        if not s or not g:
+            continue  # a trade needs someone going each way
+        da, db = evaluate(s, g)
+        if abs(da) < 0.05 and abs(db) < 0.05:
+            continue  # only bench players move: changes nothing
+        results.append((s, g, da, db))
+    even = [r for r in results if min(r[2], r[3]) >= -0.5 and abs(r[2] - r[3]) <= 3]
+    pool = even or results  # if nothing is truly even, show the closest anyway
+    # Best for the side that comes off worse first, then the smallest gap, then the fewest players.
+    key = lambda r: (-round(min(r[2], r[3]), 1), round(abs(r[2] - r[3]), 1), len(r[0]) + len(r[1]))
+    out = []
+    for s, g, da, db in sorted(pool, key=key):
+        # skip a listed trade plus filler: same result, just extra players who don't change anything
+        if any(o["send"] <= s and o["get"] <= g and round(o["da"], 1) == round(da, 1)
+               and round(o["db"], 1) == round(db, 1) for o in out):
+            continue
+        out.append({"send": set(s), "get": set(g), "da": da, "db": db,
+                    "send_names": [A[p][2] for p in sorted(s, key=lambda p: -A[p][0])],
+                    "get_names": [B[p][2] for p in sorted(g, key=lambda p: -B[p][0])]})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def verdict(result):
     """One-line read on the trade from team A's side."""
     a, b = result["a"], result["b"]
@@ -111,7 +180,7 @@ class StrengthChart(tk.Canvas):
             return
         sides = {r["a"]["team"].team_id: 0, r["b"]["team"].team_id: 1}
         order = sorted(r["after"], key=lambda tid: -r["after"][tid])
-        self.create_text(14, 14, text="League lineup strength (fp/g of each team's starters)",
+        self.create_text(14, 14, text="Lineup strength (fp/g of starters)",
                          anchor="w", fill=INK, font=(FONT, 11, "bold"))
         self.create_text(w - 14, 14, text="o before   ● after", anchor="e", fill=INK_2, font=(FONT, 9))
         top = 34
@@ -140,5 +209,5 @@ class StrengthChart(tk.Canvas):
             label = f"{r['after'][tid]:.1f}" + (f"  ({d:+.1f})" if involved else "")
             self.create_text(x1 + 12, y, text=label, anchor="w", fill=INK if involved else MUTED,
                              font=(FONT, 9, "bold" if involved else "normal"))
-        self.create_text(x0, h - 9, text=f"axis zoomed to {lo:.0f}-{hi:.0f} fp/g so the differences show",
+        self.create_text(x0, h - 9, text=f"axis zoomed in: {lo:.0f}-{hi:.0f} fp/g",
                          anchor="w", fill=MUTED, font=(FONT, 8))

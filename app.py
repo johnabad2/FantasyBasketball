@@ -252,7 +252,7 @@ class App(tk.Tk):
 
         body = ttk.Frame(f)
         body.pack(fill="both", expand=True, pady=(10, 0))
-        self.tl_text = tk.Text(body, width=64, wrap="word", relief="flat", padx=12, pady=10,
+        self.tl_text = tk.Text(body, width=54, wrap="word", relief="flat", padx=12, pady=10,
                                background="white", font=FONT, cursor="arrow")
         self.tl_text.pack(side="left", fill="y")
         self.tl_text.tag_configure("verdict", font=(FONT[0], 11, "bold"), spacing3=8)
@@ -260,6 +260,17 @@ class App(tk.Tk):
         self.tl_text.tag_configure("b", foreground=SERIES[1], font=(FONT[0], 10, "bold"), spacing1=6)
         self.tl_text.tag_configure("body", foreground="#333333", lmargin1=12, lmargin2=12)
         self.tl_text.tag_configure("muted", foreground="#777777", lmargin1=12, lmargin2=12)
+        sugg = ttk.Frame(body, width=560)
+        sugg.pack(side="left", fill="y", padx=(10, 0))
+        sugg.pack_propagate(False)
+        self.tl_sugg_head = tk.StringVar()
+        ttk.Label(sugg, textvariable=self.tl_sugg_head, font=(FONT[0], 10, "bold")).pack(anchor="w")
+        ttk.Label(sugg, text="Updates as you tick players. Click one to load it.", style="Sub.TLabel").pack(anchor="w")
+        self.tl_sugg = Table(sugg, ("sends", "gets", "you", "them"), text_cols=("sends", "gets"),
+                             widths={"sends": 215, "gets": 215, "you": 58, "them": 58})
+        self.tl_sugg.pack(fill="both", expand=True, pady=(4, 0))
+        self.tl_sugg.tree.bind("<ButtonRelease-1>", self._trade_apply_suggestion)
+        self._tl_options = []
         self.tl_chart = trade.StrengthChart(body, height=320)
         self.tl_chart.pack(side="left", fill="both", expand=True, padx=(10, 0))
 
@@ -796,6 +807,7 @@ class App(tk.Tk):
 
         r = trade.simulate(league, team_a, team_b, self.tl_send, self.tl_get)
         self.tl_chart.show(r)
+        self._trade_suggestions(league, team_a, team_b)
         txt = self.tl_text
         txt.configure(state="normal")
         txt.delete("1.0", "end")
@@ -825,6 +837,31 @@ class App(tk.Tk):
         txt.insert("end", "\nLineup = the best players a team can start each day (10 slots). Bench players "
                           "mostly don't score in a points league, so depth only helps through injuries.", "muted")
         txt.configure(state="disabled")
+
+    def _trade_suggestions(self, league, team_a, team_b):
+        """Fill the 'even it out' list: balanced versions of the picked trade, or fair trades
+        with this team when nothing is picked."""
+        picked = bool(self.tl_send or self.tl_get)
+        if picked:
+            self.tl_sugg_head.set("Ways to even out this trade (adds up to 2 players)")
+        else:
+            self.tl_sugg_head.set(f"Fair trades with {team_b.team_name} (1-2 players each way)")
+        self._tl_options = trade.balance(league, team_a, team_b, self.tl_send, self.tl_get)
+        short = lambda names: ", ".join(f"{n.split()[0][0]}. {' '.join(n.split()[1:])}" if " " in n else n
+                                        for n in names)  # "J. Johnson, L. James" fits the columns
+        rows = [(short(o["send_names"]), short(o["get_names"]), f"{o['da']:+.1f}", f"{o['db']:+.1f}")
+                for o in self._tl_options]
+        tags = [("hot",) if min(o["da"], o["db"]) >= -0.05 else () for o in self._tl_options]
+        self.tl_sugg.set_rows(rows or [("No trade changes either lineup.", "", "", "")], tags,
+                              [str(i) for i in range(len(rows))] if rows else None)
+
+    def _trade_apply_suggestion(self, event):
+        iid = self.tl_sugg.tree.identify_row(event.y)
+        if not iid or not iid.isdigit() or int(iid) >= len(self._tl_options):
+            return
+        o = self._tl_options[int(iid)]
+        self.tl_send, self.tl_get = set(o["send"]), set(o["get"])
+        self._trade_render()
 
     # ------------------------------------------------------------ compare
 

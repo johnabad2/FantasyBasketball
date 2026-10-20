@@ -24,7 +24,10 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Ta
 - **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
   team's lineup strength (per-game value of its best 10 starters) before and after, the change in
   league rank, roughly how many season points it's worth over the games left, roster-size and
-  position changes, a verdict on whether they'd accept, and where every team stands afterwards
+  position changes, a verdict on whether they'd accept, and where every team stands afterwards.
+  The **even-it-out list** updates as you tick: with players picked it suggests adding 1-2 more
+  (from either side) so both teams come out even; with nothing picked it lists fair 1-2 player
+  trades with that team. Win-win trades (both lineups improve) are green. Click one to load it.
 - **League**: any team's roster, any stat window
 - **Player**: search any NBA player, with their ESPN photo (cached in `data\headshots`). Nicknames
   work too ("kd", "slim reaper", "the joker", "sga"); add your own in `config\nicknames.json`.
