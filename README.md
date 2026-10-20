@@ -23,7 +23,11 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Ta
 - **Trades**: up to 3 trade ideas per team, best gain first
 - **League**: any team's roster, any stat window
 - **Player**: search any NBA player, with their ESPN photo (cached in `data\headshots`). Nicknames
-  work too ("kd", "slim reaper", "the joker", "sga"); add your own in `config\nicknames.json`
+  work too ("kd", "slim reaper", "the joker", "sga"); add your own in `config\nicknames.json`.
+  Below the stats is a **game-by-game chart**: pick fantasy points or any stat (or click a stat's
+  column header / a row in "Points by stat"), choose all games or the last 5-30, and hover a bar
+  for that game's box score. Blue = above the player's average, red = below. Game logs come from
+  ESPN's public game log; until this season has games it shows last season.
 - **Activity**: recent adds, drops and trades
 
 Click a column header to sort; double-click a player or team to open it. The window refreshes

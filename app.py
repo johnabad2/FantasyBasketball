@@ -11,7 +11,9 @@ from datetime import datetime
 from tkinter import ttk
 
 import fantasy
+import gamelog
 import stats
+from chart import GameChart
 from stats import BOX, SPLIT_LABELS, SPLITS, box, fp_per_game, games, owner_names, split_of
 
 FONT = ("Segoe UI", 10)
@@ -145,6 +147,9 @@ class App(tk.Tk):
 
         s.configure("Sub.TLabel", foreground="#666666")
 
+        s.configure("Toolbutton", padding=(8, 3), background="#e9ecf1")
+        s.map("Toolbutton", background=[("selected", ACCENT), ("active", "#dbe4f3")],
+              foreground=[("selected", "white")])
         s.configure("Accent.TButton", foreground="white", background=ACCENT)
         s.map("Accent.TButton", background=[("active", "#1559b0"), ("disabled", "#9bb8e0")])
         self.configure(background="#f6f7f9")
@@ -278,11 +283,41 @@ class App(tk.Tk):
         self.player_splits = Table(right, ("split", "gp", "fp/g", *BOX), text_cols=("split",),
                                    wide=("split",), height=5)
         self.player_splits.pack(fill="both", expand=True)
+        # Clicking a stat's column header charts that stat game by game.
+        header_stat = {"fp/g": "FP", "MPG": "MIN", **{s: s for s in gamelog.CHART_STATS}}
+        for col in ("fp/g", *BOX):
+            if col in header_stat:
+                self.player_splits.tree.heading(col, command=lambda s=header_stat[col]: self.chart_stat.set(s))
+
+        bottom = ttk.Frame(f)
+        bottom.pack(fill="both", expand=True, pady=(12, 0))
+        side = ttk.Frame(bottom, width=430)
+        side.pack(side="right", fill="y", padx=(14, 0))
+        side.pack_propagate(False)
         self.breakdown_head = tk.StringVar()
-        ttk.Label(f, textvariable=self.breakdown_head, style="Sub.TLabel").pack(anchor="w", pady=(12, 2))
-        self.breakdown = Table(f, ("stat", "per game", "pts each", "fantasy pts"),
-                               text_cols=("stat",), height=11)
+        ttk.Label(side, textvariable=self.breakdown_head, style="Sub.TLabel").pack(anchor="w", pady=(0, 2))
+        self.breakdown = Table(side, ("stat", "per game", "pts each", "fantasy pts"), text_cols=("stat",))
         self.breakdown.pack(fill="both", expand=True)
+        self.breakdown.tree.bind("<<TreeviewSelect>>", self._breakdown_clicked)
+
+        main = ttk.Frame(bottom)
+        main.pack(side="left", fill="both", expand=True)
+        controls = ttk.Frame(main)
+        controls.pack(fill="x", pady=(0, 6))
+        self.chart_stat = tk.StringVar(value="FP")
+        for s in gamelog.CHART_STATS:
+            ttk.Radiobutton(controls, text="Fantasy pts" if s == "FP" else s, value=s, variable=self.chart_stat,
+                            style="Toolbutton").pack(side="left", padx=(0, 2))
+        self.chart_stat.trace_add("write", lambda *a: self._draw_chart())
+        self.chart_range = ttk.Combobox(controls, state="readonly", width=12,
+                                        values=["All games", "Last 30", "Last 15", "Last 10", "Last 5"])
+        self.chart_range.current(0)
+        self.chart_range.pack(side="right")
+        self.chart_range.bind("<<ComboboxSelected>>", lambda e: self._draw_chart())
+        ttk.Label(controls, text="Show", style="Sub.TLabel").pack(side="right", padx=6)
+        self.chart = GameChart(main, height=300)
+        self.chart.pack(fill="both", expand=True)
+        self._games, self._games_label, self._games_for = [], "", None
         return f
 
     def _activity_tab(self):
@@ -523,12 +558,18 @@ class App(tk.Tk):
         aka = f"  “{'”, “'.join(nicks[:3])}”" if nicks else ""
         self.player_head.set(f"{p.name}{aka}   ·   {p.position}, {p.proTeam}   ·   {status_text(p)}   ·   {owner}")
         self._photo_for = p.playerId
+        self._games_for = p.playerId
+        self._games, self._games_label = [], ""
+        self._chart_name = p.name
         self.photo_label.configure(image=self._blank, text="Loading photo...")
-        if self.demo:  # demo ids are made up and could match a real player's photo
+        if self.demo:  # demo ids are made up and could match a real player's photo or games
             self.photo_label.configure(text="No photo")
+            self.chart.show_message("No game logs in demo mode.")
         else:
             pid = p.playerId
             self.run(lambda: (pid, headshot(pid)), self._show_photo)
+            self.chart.show_message(f"Loading {p.name}'s games...")
+            self.run(lambda: (pid, *self._fetch_games(pid, year, rules)), self._show_games)
         self.player_splits.set_rows(
             [(SPLIT_LABELS[k], games(split_of(p, year, k)), f"{fp_per_game(split_of(p, year, k), rules):.1f}",
               *(box(split_of(p, year, k), stat) for stat in BOX))
@@ -537,9 +578,48 @@ class App(tk.Tk):
         avg = s.get("avg") or {}
         parts = sorted(((stat, avg.get(stat, 0), pts) for stat, pts in rules.items() if avg.get(stat)),
                        key=lambda x: -abs(x[1] * x[2]))
-        self.breakdown_head.set(f"Where the points come from ({'projected' if proj else 'season'}, per game)")
+        self.breakdown_head.set(f"Points by stat ({'projected' if proj else 'season'}) · click to chart")
         self.breakdown.set_rows([(stat, f"{per:.1f}", f"{pts:+g}", f"{per * pts:+.1f}") for stat, per, pts in parts],
                                 [("hot" if per * pts > 0 else "cold",) for _, per, pts in parts])
+
+    @staticmethod
+    def _fetch_games(pid, year, rules):
+        try:
+            return gamelog.latest_games(pid, year, rules)
+        except OSError:  # offline / ESPN hiccup: say so in the chart, don't pop an error
+            return None, "Couldn't load game logs from ESPN. Try Refresh."
+
+    def _show_games(self, result):
+        pid, games, label = result
+        if pid != self._games_for:
+            return  # a different player was opened meanwhile
+        if games is None:
+            self.chart.show_message(label)
+            return
+        self._games, self._games_label = games, label
+        self._draw_chart()
+
+    def _draw_chart(self):
+        if not self._games:
+            if self._games_label:
+                self.chart.show_message(f"No games in the {self._games_label}.")
+            return
+        stat = self.chart_stat.get()
+        pick = self.chart_range.get()
+        games = self._games if pick == "All games" else self._games[-int(pick.split()[-1]):]
+        scoring = (self.data or {}).get("rules", {})
+        worse = "  (fewer is better for you)" if scoring.get(stat, 0) < 0 else ""
+        span = "" if pick == "All games" else f", {pick.lower()}"
+        self.chart.show(games, stat, f"{gamelog.STAT_NAMES[stat]} per game  ·  {self._chart_name}{worse}",
+                        note=f"{self._games_label}{span}  ·  {len(games)} games  ·  average is over the games shown"
+                             "  ·  hover a bar for that game's box score")
+
+    def _breakdown_clicked(self, _event):
+        sel = self.breakdown.tree.selection()
+        if sel:
+            stat = self.breakdown.tree.item(sel[0], "values")[0]
+            if stat in gamelog.CHART_STATS:
+                self.chart_stat.set(stat)
 
     def _show_photo(self, result):
         pid, path = result
