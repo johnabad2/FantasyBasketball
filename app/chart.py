@@ -3,7 +3,7 @@ a dashed average line, best/worst games labeled, and a hover tooltip for every g
 import math
 import tkinter as tk
 
-from theme import C
+from theme import C, GLOW, blend
 
 SURFACE = C["chart_surface"]
 INK = C["chart_ink"]
@@ -98,15 +98,28 @@ class GameChart(tk.Canvas):
         gap = 2 if slot > 5 else 1 if slot > 3 else 0
         self.bars = []
         bar_w = min(slot - gap, 36)  # thin marks: cap the width when there are only a few games
+        marks = []  # (x0, top, x1, bottom, colour) of each drawn bar
         for i, (g, v) in enumerate(zip(self.games, vals)):
             cx = x0 + (i + 0.5) * slot
             bx0, bx1 = cx - bar_w / 2, cx + bar_w / 2
-            self.bars.append((x0 + i * slot, x0 + (i + 1) * slot, g, v))
+            mark = None
             if v != 0:
-                self.create_rectangle(bx0, min(y(v), y(0)), max(bx1, bx0 + 2), max(y(v), y(0)),
-                                      fill=above_c if v >= avg else below_c, outline="")
+                mark = (bx0, min(y(v), y(0)), max(bx1, bx0 + 2), max(y(v), y(0)),
+                        above_c if v >= avg else below_c)
+                marks.append(mark)
+            self.bars.append((x0 + i * slot, x0 + (i + 1) * slot, g, v, mark))
+        if GLOW:  # faint halo, drawn first so neighbouring bars sit on top of it
+            for mx0, my0, mx1, my1, colour in marks:
+                for grow, fade in ((2, .84), (1, .66)):
+                    self.create_rectangle(mx0 - grow, my0 - grow, mx1 + grow, my1, outline="",
+                                          fill=blend(colour, SURFACE, fade))
+        for mx0, my0, mx1, my1, colour in marks:
+            self.create_rectangle(mx0, my0, mx1, my1, fill=colour, outline="")
 
         # average line, labeled at the right end
+        if GLOW:
+            for width, fade in ((7, .88), (4, .75)):
+                self.create_line(x0, y(avg), x1, y(avg), fill=blend(INK_2, SURFACE, fade), width=width)
         self.create_line(x0, y(avg), x1, y(avg), fill=INK_2, dash=(5, 3), width=2)
         t = self.create_text(x1 - 6, y(avg) - 11, text=f"avg {avg:.1f}", anchor="e", fill=INK, font=(FONT, 9, "bold"))
         bx = self.bbox(t)
@@ -151,11 +164,17 @@ class GameChart(tk.Canvas):
         hit = next((b for b in self.bars if b[0] <= event.x < b[1]), None)
         if not hit or not (self.PAD_T <= event.y <= self.winfo_height() - self.PAD_B):
             return
-        bx0, bx1, g, v = hit
+        bx0, bx1, g, v, mark = hit
         # column wash behind the hovered game (hit target is the full column, not just the bar)
         wash = self.create_rectangle(bx0, self.PAD_T, bx1, self.winfo_height() - self.PAD_B,
                                      fill=HOVER_WASH, outline="", tags="hover")
         self.tag_lower(wash)
+        if mark and GLOW:  # the hovered bar glows a little brighter and sits on top
+            mx0, my0, mx1, my1, colour = mark
+            for grow, fade in ((5, .82), (3, .62), (1, .4)):
+                self.create_rectangle(mx0 - grow, my0 - grow, mx1 + grow, my1, outline="", tags="hover",
+                                      fill=blend(colour, HOVER_WASH, fade))
+            self.create_rectangle(mx0, my0, mx1, my1, fill=colour, outline="", tags="hover")
         diff = v - self.avg
         playoff = "  ·  playoffs" if g.get("playoffs") else ""
         lines = [f"{g['date']:%a %d %b}  ·  {g['opp']}  ·  {g['result']}{playoff}",

@@ -5,7 +5,7 @@ as many as it has active lineup slots. That's what scores in a points league; th
 mostly doesn't. Rest-of-season impact = change in lineup strength x games left."""
 import tkinter as tk
 
-from theme import C
+from theme import C, GLOW, blend
 
 from fantasy import form_of
 
@@ -212,6 +212,10 @@ class StrengthChart(tk.Canvas):
                 self.create_line(b, y, a, y, fill=color, width=2, arrow="last", arrowshape=(8, 9, 3))
             if involved:
                 self.create_oval(b - 5, y - 5, b + 5, y + 5, outline=color, width=2, fill=SURFACE)
+            if involved and GLOW:  # the two trading teams glow softly
+                for grow, fade in ((9, .86), (7, .7)):
+                    self.create_oval(a - grow, y - grow, a + grow, y + grow, outline="",
+                                     fill=blend(color, SURFACE, fade))
             self.create_oval(a - 5, y - 5, a + 5, y + 5, fill=color, outline=SURFACE, width=2)
             d = r["after"][tid] - r["before"][tid]
             label = f"{r['after'][tid]:.1f}" + (f"  ({d:+.1f})" if involved else "")

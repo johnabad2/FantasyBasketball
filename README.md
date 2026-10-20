@@ -68,8 +68,7 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   Player tab starts a comparison from the player you're looking at.
 - **Activity**: recent adds, drops and trades
 
-Dark mode is the default; the **Light mode / Dark mode** button in the header switches (the window
-reopens in the other theme, and the choice is remembered). Click a column header to sort; double-click a player or team to open it. The window refreshes
+Click a column header to sort; double-click a player or team to open it. The window refreshes
 from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here too.
 
 ## Keep list

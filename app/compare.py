@@ -5,7 +5,7 @@ axis" means high for the league, not just higher than the other player. Axes are
 so up is always better for fantasy (turnovers are flipped)."""
 import tkinter as tk
 
-from theme import C
+from theme import C, GLOW, blend
 
 from stats import fp_per_game, season_or_projection, split_of
 
@@ -129,6 +129,10 @@ class ParallelChart(tk.Canvas):
             pts = []
             for (key, _), x in zip(self.axes, self.axis_x):
                 pts += [x, self._y(key, vals.get(key, 0))]
+            if GLOW:  # soft halo along the line
+                for width, fade in ((9, .86), (5, .7)):
+                    self.create_line(*pts, fill=blend(SERIES[i], SURFACE, fade), width=width,
+                                     capstyle="round", joinstyle="round")
             self.create_line(*pts, fill=SERIES[i], width=2)
         for i, (_, vals) in enumerate(self.players):
             for (key, _), x in zip(self.axes, self.axis_x):
@@ -146,6 +150,9 @@ class ParallelChart(tk.Canvas):
 
     def _marker(self, x, y, i):
         r = 5
+        if GLOW:
+            self.create_oval(x - r - 4, y - r - 4, x + r + 4, y + r + 4, outline="",
+                             fill=blend(SERIES[i], SURFACE, .78))
         shape = self.create_oval if i == 0 else self.create_rectangle  # circle vs square
         shape(x - r, y - r, x + r, y + r, fill=SERIES[i], outline=SURFACE, width=2)
 

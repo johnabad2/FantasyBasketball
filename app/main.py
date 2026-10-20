@@ -8,6 +8,7 @@ import re
 import sys
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 from datetime import datetime
 from tkinter import ttk
 
@@ -26,7 +27,7 @@ from stats import BOX, SHOOTING_WIDTHS, SPLIT_LABELS, SPLITS, box, fp_per_game, 
 
 FONT = ("Segoe UI", 11)
 COLUMN_SCALE = 1.1  # column widths were tuned at 10pt; scale them with the 11pt font
-# palette: navy chrome, basketball-orange actions; light or dark per theme.py (Light/Dark button)
+# palette: dark theme from theme.py - navy chrome, basketball-orange actions
 T = theme.C
 NAVY = T["header"]          # header bar
 NAVY_2 = T["heading_bg"]    # table headings, active toggles
@@ -173,6 +174,67 @@ class Table(ttk.Frame):
         self._stripe()
 
 
+class GlowTabs(tk.Frame):
+    """The tab strip, drawn by hand so tabs can glow: a soft orange halo on hover, a brighter one
+    (plus an orange underline) on the selected tab. The ttk.Notebook underneath, with its own tabs
+    hidden, still holds the pages, so tabs.select(...) anywhere in the app keeps working."""
+    HEIGHT = 46
+
+    def __init__(self, parent, notebook):
+        super().__init__(parent, background=PAGE)
+        self.nb = notebook
+        self.items = []  # (canvas, page, title)
+        self.hover = None
+        self.font = tkfont.Font(family=FONT[0], size=11)
+        self.bold = tkfont.Font(family=FONT[0], size=11, weight="bold")
+        notebook.bind("<<NotebookTabChanged>>", lambda e: self.redraw(), add="+")
+
+    def add(self, page, title):
+        c = tk.Canvas(self, width=self.bold.measure(title) + 44, height=self.HEIGHT, background=PAGE,
+                      highlightthickness=0, cursor="hand2")
+        c.pack(side="left", padx=(0, 2))
+        c.bind("<Enter>", lambda e, c=c: self._set_hover(c))
+        c.bind("<Leave>", lambda e: self._set_hover(None))
+        c.bind("<Button-1>", lambda e, page=page: self.nb.select(page))
+        self.items.append((c, page, title))
+        self._draw(c, page, title)
+
+    def _set_hover(self, canvas):
+        self.hover = canvas
+        self.redraw()
+
+    def redraw(self):
+        for c, page, title in self.items:
+            self._draw(c, page, title)
+
+    @staticmethod
+    def _rounded(c, x1, y1, x2, y2, r, **kw):
+        pts = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2, x2 - r, y2,
+               x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+        c.create_polygon(pts, smooth=True, **kw)
+
+    def _draw(self, c, page, title):
+        c.delete("all")
+        w, h = int(c["width"]), self.HEIGHT
+        selected = str(page) == self.nb.select()
+        hovered = c is self.hover
+        x1, y1, x2, y2 = 6, 6, w - 6, h - 4
+        if selected:   # bright halo: rings fading from orange into the page
+            rings, fill, fg, font = [(5, .9), (4, .8), (3, .66), (2, .5), (1, .32)], T["tab_selected"], \
+                T["tab_selected_fg"], self.bold
+        elif hovered:  # softer halo
+            rings, fill, fg, font = [(4, .9), (3, .8), (2, .66), (1, .5)], T["tab_active"], TEXT, self.font
+        else:
+            rings, fill, fg, font = [], T["tab_bg"], TEXT_2, self.font
+        for grow, fade in rings:
+            self._rounded(c, x1 - grow, y1 - grow, x2 + grow, y2 + grow, 12 + grow,
+                          fill=theme.blend(ORANGE, PAGE, fade), outline="")
+        self._rounded(c, x1, y1, x2, y2, 12, fill=fill, outline="")
+        if selected:
+            c.create_line(x1 + 12, y2 - 1, x2 - 12, y2 - 1, fill=ORANGE, width=3, capstyle="round")
+        c.create_text(w / 2, (y1 + y2) / 2, text=title, fill=fg, font=font)
+
+
 class App(tk.Tk):
     def __init__(self, demo=False):
         super().__init__()
@@ -214,6 +276,8 @@ class App(tk.Tk):
 
         # tabs: the selected one turns white with navy bold text
         s.configure("TNotebook", background=PAGE, borderwidth=0, tabmargins=(8, 6, 8, 0))
+        s.configure("Hidden.TNotebook", background=PAGE, borderwidth=0, tabmargins=0)
+        s.layout("Hidden.TNotebook.Tab", [])
         s.configure("TNotebook.Tab", padding=(16, 8), font=(FONT[0], 11), background=T["tab_bg"],
                     foreground=TEXT_2, borderwidth=0)
         s.map("TNotebook.Tab", background=[("selected", T["tab_selected"]), ("active", T["tab_active"])],
@@ -226,9 +290,6 @@ class App(tk.Tk):
         s.configure("Accent.TButton", foreground="#ffffff", background=ORANGE, font=(FONT[0], 11, "bold"))
         s.map("Accent.TButton", background=[("active", ORANGE_DARK), ("disabled", T["accent_disabled"])],
               foreground=[("disabled", "#ffffff")])
-        s.configure("Header.TButton", padding=(10, 6), background=T["header"], foreground=T["header_status"],
-                    bordercolor=T["header_sub"])
-        s.map("Header.TButton", background=[("active", T["heading_active"])])
         s.configure("Toolbutton", padding=(10, 5), background=T["button_bg"], foreground=TEXT)
         s.map("Toolbutton", background=[("selected", T["toggle_on"]), ("active", T["button_active"])],
               foreground=[("selected", "#ffffff")])
@@ -274,15 +335,14 @@ class App(tk.Tk):
                  foreground=T["header_sub"]).pack(anchor="w")
         self.refresh_btn = ttk.Button(top, text="Refresh", style="Accent.TButton", command=self.refresh)
         self.refresh_btn.pack(side="right")
-        other = "light" if theme.NAME == "dark" else "dark"
-        ttk.Button(top, text=f"{other.title()} mode", style="Header.TButton",
-                   command=lambda: self._switch_theme(other)).pack(side="right", padx=(0, 10))
         self.status = tk.StringVar()
         tk.Label(top, textvariable=self.status, font=(FONT[0], 10), background=NAVY,
                  foreground=T["header_status"]).pack(side="right", padx=14)
 
-        self.tabs = ttk.Notebook(self)
-        self.tabs.pack(fill="both", expand=True, padx=10, pady=(8, 10))
+        self.tabs = ttk.Notebook(self, style="Hidden.TNotebook")  # pages only; GlowTabs draws the tabs
+        self.tabbar = GlowTabs(self, self.tabs)
+        self.tabbar.pack(fill="x", padx=12, pady=(10, 2))
+        self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self._standings_tab()
         self._my_team_tab()
         self.week_tab = self._week_tab()
@@ -295,16 +355,10 @@ class App(tk.Tk):
         self.news_tab = self._news_tab()
         self._activity_tab()
 
-    def _switch_theme(self, name):
-        """Save the choice and reopen the window in the other theme (colours are set at startup)."""
-        import subprocess
-        theme.save(name)
-        subprocess.Popen([sys.executable, *sys.argv], cwd=str(stats.ROOT))
-        self.destroy()
-
     def _tab(self, title):
         f = ttk.Frame(self.tabs, padding=10)
         self.tabs.add(f, text=title)
+        self.tabbar.add(f, title)
         return f
 
     def _standings_tab(self):

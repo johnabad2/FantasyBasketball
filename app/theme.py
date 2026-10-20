@@ -1,33 +1,7 @@
-"""Light and dark colour themes for the window and its charts.
+"""The app's colours (dark theme) for the window and its charts, in one place.
 
-The choice lives in data/ui.json (dark by default). Every module reads its colours from `C` when
-it's imported, so switching themes restarts the window. Chart data colours (above/below average,
-the two compared players) are validated colour-blind-safe pairs in both themes."""
-import json
-
-from stats import DATA
-
-PREF = DATA / "ui.json"
-
-LIGHT = {
-    # window chrome
-    "header": "#14213d", "header_text": "#ffffff", "header_sub": "#9fb3cf", "header_status": "#c7d3e3",
-    "accent": "#f26b1d", "accent_dark": "#d4560b", "accent_disabled": "#f5b48f",
-    "page": "#e9eef5", "card": "#ffffff", "border": "#cfd8e3",
-    "text": "#111827", "text_2": "#374151", "muted": "#4b5563",
-    "stripe": "#f3f6fa", "me_bg": "#ffe9d9",
-    "heading_bg": "#1f3a5f", "heading_active": "#2b4c7e", "heading_text": "#ffffff",
-    "select_bg": "#1f3a5f", "select_fg": "#ffffff",
-    "tab_bg": "#d7dfea", "tab_active": "#e6ecf4", "tab_selected": "#ffffff", "tab_selected_fg": "#14213d",
-    "button_bg": "#dfe6ef", "button_active": "#cfd9e6", "toggle_on": "#1f3a5f",
-    "field_bg": "#ffffff", "photo_bg": "#e9ecf1",
-    "red": "#c62828", "amber": "#b26a00", "green": "#2e7d32",
-    # charts
-    "chart_surface": "#fcfcfb", "chart_ink": "#0b0b0b", "chart_ink2": "#52514e", "chart_muted": "#66655f",
-    "chart_grid": "#e1e0d9", "chart_axis": "#c3c2b7", "chart_wash": "#eef3fb", "chart_other": "#c3c2b7",
-    "chart_border": "#e3e3e0", "tooltip_bg": "#ffffff", "tooltip_border": "#d6d5cf",
-    "above": "#2a78d6", "below": "#d9493f", "series": ["#2a78d6", "#eb6834"],
-}
+Every module reads its colours from `C`. Chart data colours (above/below average, the two compared
+players) are colour-blind-safe pairs validated against the dark chart surface."""
 
 DARK = {
     "header": "#0a0f1a", "header_text": "#f3f4f6", "header_sub": "#8ea2c0", "header_status": "#b7c4d8",
@@ -48,22 +22,16 @@ DARK = {
 }
 
 
-def current():
-    try:
-        return json.loads(PREF.read_text()).get("theme", "dark")
-    except (OSError, ValueError):
-        return "dark"
+C = DARK
+NAME = "dark"
 
 
-def save(name):
-    DATA.mkdir(exist_ok=True)
-    try:
-        prefs = json.loads(PREF.read_text())
-    except (OSError, ValueError):
-        prefs = {}
-    prefs["theme"] = name
-    PREF.write_text(json.dumps(prefs))
+def blend(color, toward, t):
+    """Mix two #rrggbb colours: t=0 gives `color`, t=1 gives `toward`. Tk has no transparency, so
+    glows are drawn as rings of colours fading into the background."""
+    a = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(toward[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b))
 
 
-NAME = current()
-C = DARK if NAME == "dark" else LIGHT
+GLOW = True  # subtle chart glow (dark backgrounds only - which is all the app uses)
