@@ -28,6 +28,11 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Ta
   column header / a row in "Points by stat"), choose all games or the last 5-30, and hover a bar
   for that game's box score. Blue = above the player's average, red = below. Game logs come from
   ESPN's public game log; until this season has games it shows last season.
+- **Compare**: two players head to head ("lebron" vs "kd" works) on a parallel-coordinates chart,
+  either as per-game stats or as the fantasy points each stat earns. Every axis spans all rostered
+  players in your league and up is always better for fantasy (turnovers are flipped). The side
+  table shows who has the edge on each stat in fantasy points per game. "Compare with..." on the
+  Player tab starts a comparison from the player you're looking at.
 - **Activity**: recent adds, drops and trades
 
 Click a column header to sort; double-click a player or team to open it. The window refreshes

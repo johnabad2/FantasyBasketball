@@ -14,10 +14,12 @@ import fantasy
 import gamelog
 import stats
 from chart import GameChart
+from compare import SERIES, ParallelChart, axes_for, profile
 from stats import BOX, SPLIT_LABELS, SPLITS, box, fp_per_game, games, owner_names, split_of
 
 FONT = ("Segoe UI", 10)
 ACCENT = "#1d6fd8"
+INK_DARK = "#0b0b0b"
 ME_BG = "#e3eefc"
 RED = "#c62828"
 AMBER = "#b26a00"
@@ -64,14 +66,14 @@ def status_tag(p):
 class Table(ttk.Frame):
     """Treeview with a scrollbar and click-to-sort headers."""
 
-    def __init__(self, parent, columns, text_cols=(), wide=(), height=8, on_open=None):
+    def __init__(self, parent, columns, text_cols=(), wide=(), height=8, on_open=None, widths=None):
         super().__init__(parent)
         self.tree = ttk.Treeview(self, columns=columns, show="headings", height=height)
         for c in columns:
             self.tree.heading(c, text=c, command=lambda c=c: self.sort(c))
             # short codes like pos/nba/slot don't need a full text-column width
             base = 200 if c in wide else 64 if len(c) <= 4 else 110 if c in text_cols else 58
-            width = max(base, 10 * len(c) + 24)
+            width = (widths or {}).get(c) or max(base, 10 * len(c) + 24)
             self.tree.column(c, width=width, minwidth=40, anchor="w" if c in text_cols else "e",
                              stretch=c in wide)
         bar = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
@@ -172,6 +174,7 @@ class App(tk.Tk):
         self._trades_tab()
         self.league_tab = self._league_tab()
         self.player_tab = self._player_tab()
+        self.compare_tab = self._compare_tab()
         self._activity_tab()
 
     def _tab(self, title):
@@ -267,6 +270,7 @@ class App(tk.Tk):
         self.player_q.pack(side="left", padx=6)
         self.player_q.bind("<Return>", lambda e: self.show_player(self.player_q.get()))
         ttk.Button(bar, text="Search", command=lambda: self.show_player(self.player_q.get())).pack(side="left")
+        ttk.Button(bar, text="Compare with...", command=self._compare_current).pack(side="left", padx=6)
         top = ttk.Frame(f)
         top.pack(fill="x")
         # A blank image makes the label size itself in pixels; text shows on top when there's no photo.
@@ -318,6 +322,60 @@ class App(tk.Tk):
         self.chart = GameChart(main, height=300)
         self.chart.pack(fill="both", expand=True)
         self._games, self._games_label, self._games_for = [], "", None
+        return f
+
+    def _compare_tab(self):
+        f = self._tab("Compare")
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=(0, 8))
+        self.cmp_q = []
+        for i in range(2):
+            if i:
+                ttk.Label(bar, text="vs", font=(FONT[0], 11, "bold")).pack(side="left", padx=8)
+            e = ttk.Entry(bar, width=24)
+            e.pack(side="left")
+            e.bind("<Return>", lambda ev: self.run_compare())
+            self.cmp_q.append(e)
+        ttk.Button(bar, text="Compare", style="Accent.TButton", command=self.run_compare).pack(side="left", padx=10)
+        ttk.Label(bar, text="Stats").pack(side="left", padx=(16, 4))
+        self.cmp_split = ttk.Combobox(bar, state="readonly", width=30,
+                                      values=["season (projected before games)"] + [SPLIT_LABELS[k] for k in SPLITS])
+        self.cmp_split.current(0)
+        self.cmp_split.pack(side="left")
+        self.cmp_split.bind("<<ComboboxSelected>>", lambda e: self._draw_compare())
+        self.cmp_mode = tk.StringVar(value="fantasy")
+        for value, text in (("fantasy", "Fantasy points by stat"), ("raw", "Per-game stats")):
+            ttk.Radiobutton(bar, text=text, value=value, variable=self.cmp_mode, style="Toolbutton",
+                            command=self._draw_compare).pack(side="right", padx=(2, 0))
+
+        cards = ttk.Frame(f)
+        cards.pack(fill="x", pady=(0, 8))
+        self.cmp_cards = []
+        for i in range(2):
+            card = tk.Frame(cards, background="white")
+            card.pack(side="left", fill="x", expand=True, padx=(0, 10) if i == 0 else 0)
+            tk.Frame(card, background=SERIES[i], width=6).pack(side="left", fill="y")
+            blank = tk.PhotoImage(width=PHOTO_W // 2, height=PHOTO_H // 2)
+            photo = tk.Label(card, image=blank, background="#e9ecf1")
+            photo.image = blank
+            photo.pack(side="left", padx=8, pady=6)
+            text = tk.StringVar(value=f"Player {i + 1}")
+            tk.Label(card, textvariable=text, background="white", foreground=INK_DARK, justify="left",
+                     anchor="w", font=(FONT[0], 11)).pack(side="left", fill="x", expand=True)
+            self.cmp_cards.append((photo, blank, text))
+
+        body = ttk.Frame(f)
+        body.pack(fill="both", expand=True)
+        side = ttk.Frame(body, width=470)
+        side.pack(side="right", fill="y", padx=(14, 0))
+        side.pack_propagate(False)
+        ttk.Label(side, text="Side by side (edge = extra fantasy pts per game)", style="Sub.TLabel").pack(anchor="w")
+        self.cmp_table = Table(side, ("stat", "player 1", "player 2", "edge"), text_cols=("stat", "edge"),
+                               wide=("edge",), widths={"stat": 120, "player 1": 90, "player 2": 90, "edge": 150})
+        self.cmp_table.pack(fill="both", expand=True)
+        self.cmp_chart = ParallelChart(body, height=360)
+        self.cmp_chart.pack(side="left", fill="both", expand=True)
+        self._cmp = None
         return f
 
     def _activity_tab(self):
@@ -622,6 +680,111 @@ class App(tk.Tk):
             stat = self.breakdown.tree.item(sel[0], "values")[0]
             if stat in gamelog.CHART_STATS:
                 self.chart_stat.set(stat)
+
+    # ------------------------------------------------------------ compare
+
+    def _compare_current(self):
+        name = self.player_q.get().strip()
+        self.cmp_q[0].delete(0, "end")
+        self.cmp_q[0].insert(0, name)
+        self.cmp_q[1].delete(0, "end")
+        self.tabs.select(self.compare_tab)
+        self.cmp_q[1].focus_set()
+
+    def run_compare(self):
+        names = [e.get().strip() for e in self.cmp_q]
+        if not self.data or not all(names):
+            self.cmp_chart.show_message("Type two players (names or nicknames), then press Compare.")
+            return
+        league = self.data["league"]
+        self.cmp_chart.show_message(f"Looking up {names[0]} and {names[1]}...")
+
+        def work():
+            found = []
+            for n in names:
+                try:
+                    found.append(stats.find_player(league, n))
+                except SystemExit as e:  # not found / ambiguous: explain in the chart area
+                    return str(e)
+            return found
+        self.run(work, self._compare_found)
+
+    def _compare_found(self, found):
+        if isinstance(found, str):
+            self.cmp_chart.show_message(found)
+            return
+        self._cmp = found
+        for i, (p, team) in enumerate(found):
+            photo, blank, text = self.cmp_cards[i]
+            owner = team.team_name if team else "free agent"
+            text.set(f"{p.name}\n{p.position}, {p.proTeam}  ·  {status_text(p)}\n{owner}")
+            photo.image = blank
+            photo.configure(image=blank)
+            if not self.demo:
+                pid = p.playerId
+                self.run(lambda pid=pid, i=i: (i, pid, headshot(pid)), self._compare_photo)
+        self._draw_compare()
+
+    def _compare_photo(self, result):
+        i, pid, path = result
+        if not self._cmp or self._cmp[i][0].playerId != pid or path is None:
+            return  # a different pair was compared meanwhile, or no photo
+        try:
+            img = tk.PhotoImage(file=str(path)).subsample(4)  # 600x436 -> 150x109
+        except tk.TclError:
+            return
+        photo = self.cmp_cards[i][0]
+        photo.image = img  # keep a reference or Tk drops the image
+        photo.configure(image=img)
+
+    def _draw_compare(self):
+        if not self._cmp or not self.data:
+            return
+        league, rules, year = self.data["league"], self.data["rules"], self.data["league"].year
+        pick = self.cmp_split.current()
+        split_key = SPLITS[pick - 1] if pick > 0 else None
+        mode = self.cmp_mode.get()
+        axes = axes_for(mode, rules)
+        players = [(p.name, profile(p, year, rules, split_key, mode)) for p, _ in self._cmp]
+        # Scale each axis to every rostered player in the league (plus these two).
+        pool = [profile(p, year, rules, split_key, mode) for tm in league.teams for p in tm.roster]
+        pool += [v for _, v in players]
+        ranges = {}
+        for key, _ in axes:
+            vals = [v.get(key, 0) for v in pool]
+            lo, hi = min(vals), max(vals)
+            ranges[key] = (lo, hi if hi > lo else lo + 1)
+        inverted = {"TO"} if mode == "raw" else set()
+        title = "Fantasy points each stat earns per game" if mode == "fantasy" else "Per-game stats"
+        self.cmp_chart.show(axes, players, ranges, inverted, title,
+                            note=f"{self.cmp_split.get()}  ·  each axis spans every rostered player in your league"
+                                 "  ·  up is always better for fantasy  ·  hover an axis to compare")
+        self._fill_compare_table(axes, players, rules, mode)
+
+    def _fill_compare_table(self, axes, players, rules, mode):
+        (n1, v1), (n2, v2) = players
+        short = [n1.split()[-1], n2.split()[-1]]
+        if short[0] == short[1]:
+            short = [n1, n2]
+        self.cmp_table.tree.heading("player 1", text=short[0])
+        self.cmp_table.tree.heading("player 2", text=short[1])
+        rows = []
+        for key, label in axes:
+            a, b = v1.get(key, 0), v2.get(key, 0)
+            if mode == "fantasy" or key == "FP":
+                gap = a - b  # already in fantasy points
+            elif key in rules:
+                gap = (a - b) * rules[key]  # raw stat difference -> fantasy points
+            else:
+                gap = None  # FG%, FT%, minutes don't score directly
+            if gap is None:
+                edge = "   -"
+            elif abs(gap) < 0.05:
+                edge = "   even"
+            else:
+                edge = f"   {short[0] if gap > 0 else short[1]} +{abs(gap):.1f}"
+            rows.append((label, f"{a:.1f}", f"{b:.1f}", edge))
+        self.cmp_table.set_rows(rows)
 
     def _show_photo(self, result):
         pid, path = result
