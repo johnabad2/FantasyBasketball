@@ -2,12 +2,16 @@
 league's scoring rules, recent moves, CSV/JSON exports, and a daily history of points."""
 import csv
 import json
+import re
 import sqlite3
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 
-DATA = Path(__file__).resolve().parent / "data"
+ROOT = Path(__file__).resolve().parent
+DATA = ROOT / "data"
 HISTORY = DATA / "history.db"
+NICKNAMES = ROOT / "config" / "nicknames.json"
 
 BOX = ["PTS", "REB", "AST", "STL", "BLK", "3PM", "TO", "FG%", "FT%", "MPG"]
 SPLITS = ["total", "last_7", "last_15", "last_30", "projected"]
@@ -155,24 +159,52 @@ def cmd_league(league, my_id, rules, split_key=None):
         print("* no games yet: per-game numbers are ESPN's projection.")
 
 
+def norm(text):
+    """Lowercase, no accents or punctuation: 'Jokić' -> 'jokic', 'P.J. Washington' -> 'pj washington'."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    text = re.sub(r"[.'’]", "", text)
+    return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+def _nickname_file():
+    try:
+        data = json.loads(NICKNAMES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {name: nicks for name, nicks in data.items() if not name.startswith("_")}
+
+
+def nickname_lookup():
+    """{normalized nickname: player name}"""
+    return {norm(nick): name for name, nicks in _nickname_file().items() for nick in nicks}
+
+
+def nicknames_for(player_name):
+    target = norm(player_name)
+    return next((nicks for name, nicks in _nickname_file().items()
+                 if norm(name) == target or target.startswith(norm(name) + " ")), [])
+
+
 def find_player(league, query):
-    """(player, fantasy team or None). Searches rosters first, then every NBA player."""
-    q = query.lower()
-    rostered = [(p, tm) for tm in league.teams for p in tm.roster if q in p.name.lower()]
-    exact = [x for x in rostered if x[0].name.lower() == q]
+    """(player, fantasy team or None). Accepts nicknames from config/nicknames.json.
+    Searches rosters first, then every NBA player."""
+    q = norm(query)
+    q = norm(nickname_lookup().get(q, query))
+    rostered = [(p, tm) for tm in league.teams for p in tm.roster if q in norm(p.name)]
+    exact = [x for x in rostered if norm(x[0].name) == q]
     if len(exact) == 1 or len(rostered) == 1:
         return (exact or rostered)[0]
     if len(rostered) > 1:
         raise SystemExit("Several rostered players match: "
                          + ", ".join(p.name for p, _ in rostered) + ". Be more specific.")
-    names = [n for n in getattr(league, "player_map", {}).values()
-             if isinstance(n, str) and q in n.lower()]
+    names = {n for n in getattr(league, "player_map", {}).values()
+             if isinstance(n, str) and q in norm(n)}
     if not names:
         raise SystemExit(f"No player matches '{query}'.")
-    if len(names) > 1 and query.lower() not in (n.lower() for n in names):
+    exact_names = [n for n in names if norm(n) == q]
+    if len(names) > 1 and not exact_names:
         raise SystemExit("Several players match: " + ", ".join(sorted(names)[:15]) + ". Be more specific.")
-    name = next((n for n in names if n.lower() == q), names[0])
-    return league.player_info(name=name), None
+    return league.player_info(name=(exact_names or sorted(names))[0]), None
 
 
 def cmd_player(league, query, rules):
@@ -180,7 +212,9 @@ def cmd_player(league, query, rules):
     p, tm = find_player(league, query)
     status = (p.injuryStatus or "ACTIVE").replace("_", " ").lower()
     owner = f"{tm.team_name} ({owner_names(tm)})" if tm else "free agent"
-    print(f"{p.name}  {p.position}, {p.proTeam}  |  {status}  |  fantasy team: {owner}\n")
+    print(f"{p.name}  {p.position}, {p.proTeam}  |  {status}  |  fantasy team: {owner}")
+    nicks = nicknames_for(p.name)
+    print(f"aka {', '.join(nicks)}\n" if nicks else "")
     rows = [(SPLIT_LABELS[k], games(split_of(p, year, k)), f"{fp_per_game(split_of(p, year, k), rules):.1f}",
              *(box(split_of(p, year, k), stat) for stat in BOX))
             for k in SPLITS if split_of(p, year, k)]

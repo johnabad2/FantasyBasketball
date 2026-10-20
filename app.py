@@ -519,7 +519,9 @@ class App(tk.Tk):
             return
         league, rules, year = self.data["league"], self.data["rules"], self.data["league"].year
         owner = f"{team.team_name} ({owner_names(team)})" if team else "free agent"
-        self.player_head.set(f"{p.name}   ·   {p.position}, {p.proTeam}   ·   {status_text(p)}   ·   {owner}")
+        nicks = stats.nicknames_for(p.name)
+        aka = f"  “{'”, “'.join(nicks[:3])}”" if nicks else ""
+        self.player_head.set(f"{p.name}{aka}   ·   {p.position}, {p.proTeam}   ·   {status_text(p)}   ·   {owner}")
         self._photo_for = p.playerId
         self.photo_label.configure(image=self._blank, text="Loading photo...")
         if self.demo:  # demo ids are made up and could match a real player's photo

@@ -22,7 +22,8 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Ta
 - **Free Agents**: the top 100 available players; green ones beat your weakest player
 - **Trades**: up to 3 trade ideas per team, best gain first
 - **League**: any team's roster, any stat window
-- **Player**: search any NBA player, with their ESPN photo (cached in `data\headshots`)
+- **Player**: search any NBA player, with their ESPN photo (cached in `data\headshots`). Nicknames
+  work too ("kd", "slim reaper", "the joker", "sga"); add your own in `config\nicknames.json`
 - **Activity**: recent adds, drops and trades
 
 Click a column header to sort; double-click a player or team to open it. The window refreshes
