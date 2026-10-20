@@ -129,7 +129,8 @@ def _day_date(league, day):
 
 
 def week(league, players, values, injuries, days=7):
-    """One row per day from today: {day, date, playing, filled, slots, points, lineup}."""
+    """One row per day from today: {day, date, playing, filled, slots, points, lineup, cands, slot_names}.
+    cands = everyone available that day (value, player, eligible slots); lineup = who gets a slot."""
     slots = lineup_slots(league)
     today = getattr(league, "current_week", 1) or 1
     final = getattr(league, "finalScoringPeriod", None) or 174
@@ -138,7 +139,8 @@ def week(league, players, values, injuries, days=7):
         cands = _cands(league, players, values, day, injuries)
         best = best_lineup(cands, slots)
         out.append({"day": day, "date": _day_date(league, day), "playing": len(cands), "filled": len(best),
-                    "slots": len(slots), "points": sum(c[0] for c in best.values()), "lineup": best})
+                    "slots": len(slots), "points": sum(c[0] for c in best.values()), "lineup": best,
+                    "cands": cands, "slot_names": slots})
     return out
 
 

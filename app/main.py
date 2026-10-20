@@ -63,6 +63,12 @@ def status_text(p):
     return (p.injuryStatus or "ACTIVE").replace("_", " ").lower()
 
 
+def short_name(name):
+    """Last name, skipping suffixes: 'Scotty Pippen Jr.' -> 'Pippen', 'Jaren Jackson Jr.' -> 'Jackson'."""
+    parts = [w for w in name.split() if w.rstrip(".").upper() not in ("JR", "SR", "II", "III", "IV", "V")]
+    return parts[-1] if parts else name
+
+
 def status_tag(p):
     s = p.injuryStatus or "ACTIVE"
     return "out" if s in fantasy.OUT_STATUSES else "shaky" if s in fantasy.SHAKY_STATUSES else ""
@@ -483,8 +489,8 @@ class App(tk.Tk):
         f = self._tab("Week Ahead")
         self.wk_today = tk.StringVar()
         ttk.Label(f, textvariable=self.wk_today, font=(FONT[0], 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Best legal lineup for the rest of today (positions respected; players whose game has "
-                          "started are locked). Make these changes on ESPN.", style="Sub.TLabel").pack(anchor="w")
+        self.wk_caption = tk.StringVar()
+        ttk.Label(f, textvariable=self.wk_caption, style="Sub.TLabel").pack(anchor="w")
         top = ttk.Frame(f)
         top.pack(fill="x", pady=(6, 10))
         self.wk_lineup = Table(top, ("slot", "player", "game", "pts", "change"),
@@ -494,10 +500,14 @@ class App(tk.Tk):
         self.wk_lineup.pack(side="left", fill="both", expand=True)
         days = ttk.Frame(top)
         days.pack(side="left", fill="both", expand=True, padx=(14, 0))
-        ttk.Label(days, text="Next 7 days: lineup slots you'll fill", font=(FONT[0], 10, "bold")).pack(anchor="w")
-        self.wk_days = Table(days, ("day", "slots filled", "playing", "proj pts"), text_cols=("day", "slots filled"),
-                             widths={"day": 110, "slots filled": 300, "playing": 80, "proj pts": 90}, height=7)
+        ttk.Label(days, text="Next 7 days: lineup slots you'll fill  (click a day to see its lineup)",
+                  font=(FONT[0], 10, "bold")).pack(anchor="w")
+        self.wk_days = Table(days, ("day", "slots filled", "proj pts", "who's playing"),
+                             text_cols=("day", "slots filled", "who's playing"), wide=("who's playing",),
+                             widths={"day": 110, "slots filled": 300, "proj pts": 80}, height=7)
         self.wk_days.pack(fill="both", expand=True, pady=(4, 0))
+        self.wk_days.tree.bind("<<TreeviewSelect>>", self._week_day_selected)
+        self._wk_week, self._wk_selected = [], 0
         self.wk_days_note = tk.StringVar()
         ttk.Label(days, textvariable=self.wk_days_note, style="Sub.TLabel", wraplength=700).pack(anchor="w", pady=(4, 0))
 
@@ -908,8 +918,21 @@ class App(tk.Tk):
     def _fill_week(self):
         d = self.data
         plan, league = d.get("plan") or {}, d["league"]
+        week = plan.get("week") or []
+        self._wk_week = week
+        if self._wk_selected >= len(week):
+            self._wk_selected = 0
+        self._fill_week_days()
+        self._show_week_day(self._wk_selected)
+        self._fill_streamers()
+
+    def _show_today_lineup(self):
+        d = self.data
+        plan, league = d.get("plan") or {}, d["league"]
         games = lineup.todays_games(league)
         moves = plan.get("moves")
+        self.wk_caption.set("Best legal lineup for the rest of today (positions respected; players whose game has "
+                            "started are locked). Make these changes on ESPN.")
         if not moves:
             self.wk_today.set("No NBA schedule (demo mode).")
             self.wk_lineup.set_rows([])
@@ -944,19 +967,66 @@ class App(tk.Tk):
                 tags.append(("shaky",))
             self.wk_lineup.set_rows(rows, tags)
 
-        week = plan.get("week") or []
+    def _show_day_lineup(self, day):
+        """A future day's best lineup: who'd start in each slot, plus anyone playing who doesn't fit."""
+        league = self.data["league"]
+        games = lineup.games_on(league, day["day"])
+        self.wk_today.set(f"{day['date']:%A %d %b}: {day['filled']}/{day['slots']} slots filled, "
+                          f"about {day['points']:.0f} pts")
+        self.wk_caption.set("Best legal lineup for that day from your current roster (injured players count from "
+                            "their expected return). Click today's row to get back to today's moves.")
+        team_of = projections.nba_team_id
+        rows, tags = [], []
+        for si, slot in enumerate(day["slot_names"]):
+            c = day["lineup"].get(si)
+            if c:
+                rows.append((slot, c[1].name, games.get(team_of(c[1]), ""), f"{c[0]:.1f}", "start"))
+                tags.append(())
+            else:
+                rows.append((slot, "", "", "", "empty (no game)"))
+                tags.append(("cold",))
+        used = {c[1].playerId for c in day["lineup"].values()}
+        for value, p, _ in sorted(day["cands"], key=lambda c: -c[0]):
+            if p.playerId not in used:
+                rows.append(("BE", p.name, games.get(team_of(p), ""), f"{value:.1f}", "plays, but no open slot fits"))
+                tags.append(("shaky",))
+        self.wk_lineup.set_rows(rows, tags)
+
+    def _show_week_day(self, index):
+        self._wk_selected = index
+        if index == 0 or not self._wk_week:
+            self._show_today_lineup()
+        else:
+            self._show_day_lineup(self._wk_week[index])
+
+    def _week_day_selected(self, _event):
+        sel = self.wk_days.tree.selection()
+        if sel and sel[0].isdigit():
+            self._show_week_day(int(sel[0]))
+
+    def _fill_week_days(self):
+        week = self._wk_week
         rows, tags = [], []
         for day in week:
             bar = "\u2588" * day["filled"] + "\u2591" * (day["slots"] - day["filled"])
-            rows.append((f"{day['date']:%a %d %b}", f"{bar}  {day['filled']}/{day['slots']}", day["playing"],
-                         f"{day['points']:.0f}"))
+            starters = sorted(day["lineup"].values(), key=lambda c: -c[0])
+            used = {c[1].playerId for c in starters}
+            names = [short_name(c[1].name) for c in starters]
+            spare = [short_name(c[1].name) for c in day["cands"] if c[1].playerId not in used]
+            who = ", ".join(names) + (f"   (no slot: {', '.join(spare)})" if spare else "")
+            rows.append((f"{day['date']:%a %d %b}", f"{bar}  {day['filled']}/{day['slots']}",
+                         f"{day['points']:.0f}", who or "nobody"))
             tags.append(("cold",) if day["filled"] <= day["slots"] // 2 else ())
-        self.wk_days.set_rows(rows, tags)
+        self.wk_days.set_rows(rows, tags, [str(i) for i in range(len(rows))])
+        if week:
+            self.wk_days.tree.selection_set(str(self._wk_selected))
         light = [day for day in week if day["filled"] < day["slots"]]
         empty = sum(day["slots"] - day["filled"] for day in week)
         self.wk_days_note.set(f"{empty} empty slot-days this week. Red = half your lineup or more is empty: "
                               "that's where streamers earn points." if week else "")
 
+    def _fill_streamers(self):
+        plan, league = self.data.get("plan") or {}, self.data["league"]
         rows = []
         for s in plan.get("streamers") or []:
             fa = s["fa"]

@@ -38,7 +38,7 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   you get a "Start X instead of Y" alert
 - **Week Ahead**: today's **best legal lineup** (respects positions, locks players whose game has
   started) with exactly what to change on ESPN; the **next 7 days** showing how many of your 10
-  slots you'll fill each day; and **streamers**: free agents ranked by how many points they'd add
+  slots you'll fill each day and who's playing (click a day to see that day's full lineup); and **streamers**: free agents ranked by how many points they'd add
   this week, counting only games on days you'd actually start them, and who to make room with
   (an open roster spot if you have one, then your empty IR slot: INJ players always qualify, O
   players only once ESPN marks them IR-eligible; otherwise a drop, only if you also come out ahead over

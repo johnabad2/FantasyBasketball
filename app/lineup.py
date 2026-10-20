@@ -23,11 +23,15 @@ def _pro_team_abbrev(team_id):
 
 def todays_games(league):
     """{NBA team id: 'vs NYK 19:30' / '@ NYK 01:00'} for teams playing in today's scoring period."""
+    return games_on(league, getattr(league, "current_week", ""))
+
+
+def games_on(league, day):
+    """Same as todays_games, for any scoring period (one per day)."""
     schedule = getattr(league, "pro_schedule", None) or {}
-    today = str(getattr(league, "current_week", ""))
     out = {}
     for team_id, periods in schedule.items():
-        for game in periods.get(today, []):
+        for game in periods.get(str(day), []):
             home = game["homeProTeamId"] == team_id
             opp = game["awayProTeamId"] if home else game["homeProTeamId"]
             tip = datetime.fromtimestamp(game["date"] / 1000).strftime("%a %H:%M")  # your local time
