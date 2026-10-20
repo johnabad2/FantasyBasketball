@@ -97,10 +97,13 @@ def balance(league, team_a, team_b, send=(), get=(), limit=8, max_extra=2):
         b_after = [v for pid, v in B.items() if pid not in g] + [A[pid] for pid in s]
         return _strength(a_after, sa) - base_a, _strength(b_after, sb) - base_b
 
+    from fantasy import load_keep
+    keep = load_keep()  # never offered by the suggestions (you can still tick them yourself)
     send, get = frozenset(send), frozenset(get)
     options = []
     if send or get:
-        extras = [("a", pid) for pid in A if pid not in send] + [("b", pid) for pid in B if pid not in get]
+        extras = ([("a", pid) for pid in A if pid not in send and pid not in keep]
+                  + [("b", pid) for pid in B if pid not in get and pid not in keep])
         for k in range(1, max_extra + 1):
             for combo in combinations(extras, k):
                 s = send | {pid for side, pid in combo if side == "a"}
@@ -109,7 +112,7 @@ def balance(league, team_a, team_b, send=(), get=(), limit=8, max_extra=2):
     else:
         for i in (1, 2):
             for j in (1, 2):
-                for s in combinations(A, i):
+                for s in combinations([pid for pid in A if pid not in keep], i):
                     for g in combinations(B, j):
                         options.append((frozenset(s), frozenset(g)))
 

@@ -231,10 +231,17 @@ class App(tk.Tk):
                                   spacing3=6)
         ttk.Label(f, text="Roster  (base = season avg, blended with projection early on;"
                           " L15 = last 15 days)", style="Sub.TLabel").pack(anchor="w", pady=(10, 2))
-        self.my_roster = Table(f, ("player", "pos", "your lineup", "today", "proj today", "NBA role", "nba",
+        keep_bar = ttk.Frame(f)
+        keep_bar.pack(fill="x", pady=(0, 4))
+        ttk.Button(keep_bar, text="Keep / unkeep selected player", command=self._toggle_keep).pack(side="left")
+        ttk.Label(keep_bar, text="Kept players are never suggested as a drop or as trade bait (streamers, waiver "
+                                 "pickups, trade ideas). Saved in config\\keep.json.",
+                  style="Sub.TLabel").pack(side="left", padx=10)
+        self.my_roster = Table(f, ("player", "keep", "pos", "your lineup", "today", "proj today", "NBA role", "nba",
                                    "status", "gp", "base", "L15", "trend", "vs proj", "fp tot"),
                                text_cols=("player", "pos", "your lineup", "today", "NBA role", "nba", "status"),
-                               wide=("player",), widths={"your lineup": 125, "today": 175, "NBA role": 215},
+                               wide=("player",), widths={"keep": 60, "your lineup": 125, "today": 175,
+                                                          "NBA role": 215},
                                on_open=lambda v: self.show_player(v[0]))
         ttk.Label(f, text="your lineup = your fantasy slot today  ·  today = their NBA game (your time)  ·  "
                           "NBA role = how many of their last games they started (pre = preseason)  ·  "
@@ -692,14 +699,17 @@ class App(tk.Tk):
         forms = sorted((fantasy.form_of(p, year) for p in me.roster), key=lambda f: -f.worth)
         games = lineup.todays_games(d["league"])
         roles = getattr(self, "_roles", {})
-        rows, tags = [], []
+        kept = fantasy.load_keep()
+        rows, tags, iids = [], [], []
         for f in forms:
             p = f.player
             trusted = f.games >= min_games
             slot = p.lineupSlot
             in_lineup = "IR" if slot == "IR" else "bench" if slot == "BE" else f"starting ({slot})"
             vp = projections.vs_projection(p, year, d["rules"])
-            rows.append((p.name, p.position, in_lineup, lineup.game_today(d["league"], p, games) or "no game",
+            iids.append(str(p.playerId))
+            rows.append((p.name, "kept" if p.playerId in kept else "", p.position, in_lineup,
+                         lineup.game_today(d["league"], p, games) or "no game",
                          f"{today_pts[p.playerId]:.1f}" if today_pts[p.playerId] else "-",
                          roles.get(p.playerId, "-" if self.demo else "loading..."), p.proTeam, status_text(p),
                          f.games, f"{f.baseline:.1f}", f"{f.recent:.1f}", f"{f.trend:+.0%}" if trusted else "-",
@@ -708,11 +718,21 @@ class App(tk.Tk):
             hot = trusted and f.trend >= d["cfg"]["thresholds"]["trend_pct"]
             cold = trusted and f.trend <= -d["cfg"]["thresholds"]["trend_pct"]
             tags.append((status_tag(p) or ("hot" if hot else "cold" if cold else ""),))
-        self.my_roster.set_rows(rows, tags)
+        self.my_roster.set_rows(rows, tags, iids)
         # NBA roles need box scores: fetch in the background (cached after the first time), then redraw.
         missing = [p.playerId for p in me.roster if p.playerId not in roles]
         if missing and not self.demo:
             self.run(lambda: lineup.nba_roles(missing, year), self._roles_loaded)
+
+    def _toggle_keep(self):
+        sel = self.my_roster.tree.selection()
+        if not sel or not self.data:
+            self.status.set("Select a player on your roster first.")
+            return
+        pid = int(sel[0])
+        p = next(x for x in self.data["me"].roster if x.playerId == pid)
+        fantasy.set_keep(p, pid not in fantasy.load_keep())
+        self.refresh()  # suggestions everywhere are rebuilt without (or with) him
 
     def _roles_loaded(self, found):
         self._roles = {**getattr(self, "_roles", {}), **found}

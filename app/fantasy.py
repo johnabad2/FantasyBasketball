@@ -27,6 +27,7 @@ from stats import owner_names, table
 ROOT = Path(__file__).resolve().parent.parent  # project folder (this file is in app/)
 CONFIG = ROOT / "config" / "config.json"
 SEEN = ROOT / "data" / "seen_alerts.json"
+KEEP = ROOT / "config" / "keep.json"
 
 OUT_STATUSES = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 SHAKY_STATUSES = {"DAY_TO_DAY", "QUESTIONABLE", "DOUBTFUL"}
@@ -170,8 +171,34 @@ def form_alerts(mine, t):
     return alerts
 
 
+def load_keep():
+    """Player ids you never want suggested as a drop or as trade bait (config/keep.json)."""
+    try:
+        return {int(k) for k in json.loads(KEEP.read_text(encoding="utf-8")).get("players", {})}
+    except (OSError, ValueError):
+        return set()
+
+
+def set_keep(player, keep=True):
+    """Add or remove a player from the keep list. Returns the new list as {id: name}."""
+    try:
+        data = json.loads(KEEP.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    players = data.get("players", {})
+    if keep:
+        players[str(player.playerId)] = player.name
+    else:
+        players.pop(str(player.playerId), None)
+    KEEP.write_text(json.dumps({"_note": "players the app never suggests dropping or trading away",
+                                "players": players}, indent=2), encoding="utf-8")
+    return players
+
+
 def waiver_alerts(mine, free_agents, t):
-    droppable = sorted((f for f in mine if f.player.lineupSlot != "IR"), key=lambda f: f.worth)
+    keep = load_keep()
+    droppable = sorted((f for f in mine if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
+                       key=lambda f: f.worth)
     alerts = []
     # Best free agent vs your worst player, next best vs your second worst, and so on.
     for fa in sorted(free_agents, key=lambda f: f.worth, reverse=True):
@@ -191,12 +218,13 @@ def trade_ideas(mine, others, t, per_team=1):
     - their player's recent form is no better than yours (the deal looks fair to them).
     The classic version: sell your hot player, buy their slumping star.
     """
+    keep = load_keep()
     ideas = []
     for team, roster in others:
         found = []
         for give in mine:
-            if give.games < t["min_games"] or not give.healthy:
-                continue
+            if give.games < t["min_games"] or not give.healthy or give.player.playerId in keep:
+                continue  # kept players are never offered
             for get in roster:
                 if get.games < t["min_games"] or not get.healthy:
                     continue
@@ -487,6 +515,10 @@ def main():
     ac = sub.add_parser("activity")
     ac.add_argument("-n", type=int, default=25, help="how many recent transactions")
     sub.add_parser("export")
+    kp = sub.add_parser("keep", help="never suggest dropping/trading these players")
+    kp.add_argument("name", nargs="*", help="player name or nickname (none: list the keep list)")
+    up = sub.add_parser("unkeep")
+    up.add_argument("name", nargs="+")
     hi = sub.add_parser("history")
     hi.add_argument("team", nargs="?", help="team id or part of its name (default: yours)")
     args = ap.parse_args()
@@ -515,6 +547,15 @@ def main():
         stats.cmd_scoring(league, stats.scoring_rules(league))
     elif args.cmd == "activity":
         stats.cmd_activity(league, args.n)
+    elif args.cmd in ("keep", "unkeep"):
+        if args.cmd == "keep" and not args.name:
+            names = sorted(json.loads(KEEP.read_text(encoding="utf-8")).get("players", {}).values()) \
+                if KEEP.exists() else []
+            print("Keep list: " + (", ".join(names) if names else "empty"))
+        else:
+            p, _ = stats.find_player(league, " ".join(args.name))
+            names = set_keep(p, args.cmd == "keep").values()
+            print(f"{'Kept' if args.cmd == 'keep' else 'Removed'} {p.name}. Keep list: {', '.join(sorted(names)) or 'empty'}")
     elif args.cmd == "export":
         if args.demo:
             sys.exit("export is disabled in --demo so made-up data never lands in data/.")

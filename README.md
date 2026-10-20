@@ -71,6 +71,19 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
 Click a column header to sort; double-click a player or team to open it. The window refreshes
 from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here too.
 
+## Keep list
+
+Players you never want suggested as a drop or as trade bait (streamers, waiver pickups, trade
+ideas, Trade Lab suggestions). Select a player on My Team and click **Keep / unkeep**, or:
+
+```
+.venv\Scripts\python app\fantasy.py keep "jalen green"
+.venv\Scripts\python app\fantasy.py unkeep "jalen green"
+.venv\Scripts\python app\fantasy.py keep                  # show the list
+```
+
+Saved in `config\keep.json` (stays on your PC). You can still tick kept players yourself in the Trade Lab.
+
 ## Projections
 
 - **Projected standings** (Standings tab, `standings` command): points so far plus the rest of the

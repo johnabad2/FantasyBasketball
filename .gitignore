@@ -1,5 +1,7 @@
 # ESPN login cookies live here: never commit
 config.json
+# your keep list (personal picks)
+keep.json
 
 .venv/
 __pycache__/

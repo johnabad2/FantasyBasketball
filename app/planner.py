@@ -149,9 +149,12 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
     base = sum(d["points"] for d in base_week)
     light_days = {d["day"] for d in base_week if d["filled"] < d["slots"]}
     # drop candidates: the lowest-value players, plus anyone injured (they score nothing meanwhile)
-    by_value = sorted((p for p in roster if p.lineupSlot != "IR"), key=lambda p: values[p.playerId])
+    from fantasy import load_keep
+    keep = load_keep()  # players you've said never to drop
+    by_value = sorted((p for p in roster if p.lineupSlot != "IR" and p.playerId not in keep),
+                      key=lambda p: values[p.playerId])
     drops = list(dict.fromkeys(by_value[:drop_pool] + [p for p in roster if (p.injuryStatus or "") in OUT_STATUSES
-                                                         and p.lineupSlot != "IR"]))
+                                                         and p.lineupSlot != "IR" and p.playerId not in keep]))
     # With an open IR slot, an injured player can go to IR instead of being dropped.
     ir_moves = ir_candidates(league, team, injuries, days)[:open_ir_slots(league, team)]
     free_spot = open_roster_spots(league, team) > 0  # e.g. right after moving someone to IR
