@@ -62,6 +62,18 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
 Click a column header to sort; double-click a player or team to open it. The window refreshes
 from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here too.
 
+## Projections
+
+- **Projected standings** (Standings tab, `standings` command): points so far plus the rest of the
+  season simulated day by day on the real NBA schedule. Each day a team scores with its best 10
+  players who have a game, at their base value.
+- **Projected today** (My Team): each player's expected fantasy points if he plays today, and what
+  your current lineup projects in total.
+- **vs proj** (My Team, Free Agents, League): season points per game minus ESPN's projection, after
+  3 games. Positive = beating expectations.
+- ESPN's season projection itself is the **projected** row on the Player tab and a **projected**
+  option in the League and Compare tabs' Stats menus.
+
 ## Commands
 
 ```

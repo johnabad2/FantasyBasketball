@@ -314,12 +314,15 @@ def cmd_standings(league, cfg):
     me = cfg.get("my_team_id")
     if season_points_league(league):
         # Whole season is one scoring period: total points is the standings.
+        import projections
         teams = sorted(league.teams, key=lambda t: -t.points_for)
         lead = teams[0].points_for
+        proj = projections.projected_final(league) or {}
         rows = [(i, tm.team_name + (" *" if tm.team_id == me else ""), owner_names(tm),
-                 f"{tm.points_for:.1f}", f"{lead - tm.points_for:.1f}" if i > 1 else "-")
+                 f"{tm.points_for:.1f}", f"{lead - tm.points_for:.1f}" if i > 1 else "-",
+                 f"{proj[tm.team_id][2]:,.0f}" if tm.team_id in proj else "-")
                 for i, tm in enumerate(teams, 1)]
-        table(rows, ("#", "team", "owner", "points", "behind"))
+        table(rows, ("#", "team", "owner", "points", "behind", "proj final"))
         return
     rows = [(i, tm.team_name + (" *" if tm.team_id == me else ""), f"{tm.wins}-{tm.losses}",
              f"{tm.points_for:.1f}")

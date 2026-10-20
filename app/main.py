@@ -13,6 +13,7 @@ from tkinter import ttk
 import fantasy
 import gamelog
 import lineup
+import projections
 import stats
 from chart import GameChart
 from compare import SERIES, ParallelChart, axes_for, profile
@@ -187,12 +188,16 @@ class App(tk.Tk):
 
     def _standings_tab(self):
         f = self._tab("Standings")
-        self.standings = Table(f, ("#", "team", "owner", "points", "behind", "change"),
+        self.standings = Table(f, ("#", "team", "owner", "points", "behind", "change", "proj final", "proj rank"),
                                text_cols=("team", "owner"), wide=("team", "owner"), height=10,
                                on_open=lambda v: self.show_team(v[1]))
         self.standings.pack(fill="both", expand=True)
         ttk.Label(f, text="Double-click a team to see its roster. 'change' is points since the "
                           "last saved snapshot.", style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
+        ttk.Label(f, text="proj final = points so far + the rest of the season simulated day by day on the real "
+                          "NBA schedule: each day a team scores with its best 10 players who have a game, at their "
+                          "base value (ESPN's projection early on, real form later).",
+                  style="Sub.TLabel", wraplength=1400).pack(anchor="w", pady=(2, 0))
 
     def _my_team_tab(self):
         f = self._tab("My Team")
@@ -208,14 +213,16 @@ class App(tk.Tk):
                                   spacing3=6)
         ttk.Label(f, text="Roster  (base = season avg, blended with projection early on;"
                           " L15 = last 15 days)", style="Sub.TLabel").pack(anchor="w", pady=(10, 2))
-        self.my_roster = Table(f, ("player", "pos", "your lineup", "today", "NBA role", "nba", "status", "gp",
-                                   "base", "L15", "trend", "fp tot"),
+        self.my_roster = Table(f, ("player", "pos", "your lineup", "today", "proj today", "NBA role", "nba",
+                                   "status", "gp", "base", "L15", "trend", "vs proj", "fp tot"),
                                text_cols=("player", "pos", "your lineup", "today", "NBA role", "nba", "status"),
                                wide=("player",), widths={"your lineup": 125, "today": 175, "NBA role": 215},
                                on_open=lambda v: self.show_player(v[0]))
         ttk.Label(f, text="your lineup = your fantasy slot today  ·  today = their NBA game (your time)  ·  "
-                          "NBA role = how many of their last games they started (pre = preseason)",
-                  style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
+                          "NBA role = how many of their last games they started (pre = preseason)  ·  "
+                  "proj today = expected fantasy pts if he plays today  ·  vs proj = season pts/game minus "
+                  "ESPN's projection (after 3 games)",
+                  style="Sub.TLabel", wraplength=1700).pack(anchor="w", pady=(4, 0))
         self.my_roster.pack(fill="both", expand=True)
 
     def _trade_lab_tab(self):
@@ -296,7 +303,8 @@ class App(tk.Tk):
         self.split_pick.bind("<<ComboboxSelected>>", lambda e: self._fill_league())
         self.team_info = tk.StringVar()
         ttk.Label(f, textvariable=self.team_info, font=(FONT[0], 12, "bold")).pack(anchor="w", pady=(0, 6))
-        self.league_roster = Table(f, ("player", "pos", "nba", "slot", "status", "gp", "fp tot", "fp/g", *BOX),
+        self.league_roster = Table(f, ("player", "pos", "nba", "slot", "status", "gp", "fp tot", "fp/g",
+                                       "proj/g", "vs proj", *BOX),
                                    text_cols=("player", "pos", "nba", "slot", "status"), wide=("player",),
                                    on_open=lambda v: self.show_player(v[0]))
         self.league_roster.pack(fill="both", expand=True)
@@ -311,7 +319,7 @@ class App(tk.Tk):
         ttk.Label(f, text="Green = better than one of your players right now (worth = average of base and L15)."
                           " Double-click for details.", style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
         self.free_agents = Table(f, ("player", "pos", "nba", "status", "gp", "base", "L15", "trend",
-                                     "worth", "drop for them", "gain"),
+                                     "vs proj", "worth", "drop for them", "gain"),
                                  text_cols=("player", "pos", "nba", "status", "drop for them"),
                                  wide=("player", "drop for them"), on_open=lambda v: self.show_player(v[0]))
         self.free_agents.pack(fill="both", expand=True)
@@ -523,7 +531,8 @@ class App(tk.Tk):
             activity = []
         analysis = fantasy.analyze(league, me, fa_count=100)
         mine, others, fas = analysis
-        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day,
+        projected = projections.projected_final(league)
+        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3),
                     activity=activity)
@@ -553,11 +562,15 @@ class App(tk.Tk):
         d = self.data
         teams = sorted(d["league"].teams, key=lambda t: -t.points_for)
         lead = teams[0].points_for if teams else 0
+        proj = d.get("projected") or {}
+        proj_rank = {tid: r for r, tid in enumerate(sorted(proj, key=lambda k: -proj[k][2]), 1)}
         rows, tags = [], []
         for i, t in enumerate(teams, 1):
             change = f"{t.points_for - d['prev'][t.team_id]:+.1f}" if t.team_id in d["prev"] else "-"
+            final = f"{proj[t.team_id][2]:,.0f}" if t.team_id in proj else "-"
             rows.append((i, t.team_name, owner_names(t), f"{t.points_for:.1f}",
-                         f"{lead - t.points_for:.1f}" if i > 1 else "-", change))
+                         f"{lead - t.points_for:.1f}" if i > 1 else "-", change, final,
+                         f"#{proj_rank[t.team_id]}" if t.team_id in proj_rank else "-"))
             tags.append(("me",) if t.team_id == d["me"].team_id else ())
         self.standings.set_rows(rows, tags)
 
@@ -565,7 +578,14 @@ class App(tk.Tk):
         d = self.data
         me, year = d["me"], d["league"].year
         rank = 1 + sum(t.points_for > me.points_for for t in d["league"].teams)
-        self.my_title.set(f"{me.team_name}   ·   {me.points_for:.1f} pts   ·   #{rank} of {len(d['league'].teams)}")
+        forms_all = [fantasy.form_of(p, year) for p in me.roster]
+        today_pts = projections.today_points(d["league"], forms_all)
+        lineup_today = sum(v for f in forms_all for v in [today_pts[f.player.playerId]]
+                           if f.player.lineupSlot not in ("BE", "IR"))
+        proj = (d.get("projected") or {}).get(me.team_id)
+        extra = f"   ·   projected final {proj[2]:,.0f}" if proj else ""
+        self.my_title.set(f"{me.team_name}   ·   {me.points_for:.1f} pts   ·   #{rank} of {len(d['league'].teams)}"
+                          f"   ·   your lineup projects {lineup_today:.1f} pts today{extra}")
 
         self.alerts.configure(state="normal")
         self.alerts.delete("1.0", "end")
@@ -587,9 +607,12 @@ class App(tk.Tk):
             trusted = f.games >= min_games
             slot = p.lineupSlot
             in_lineup = "IR" if slot == "IR" else "bench" if slot == "BE" else f"starting ({slot})"
+            vp = projections.vs_projection(p, year, d["rules"])
             rows.append((p.name, p.position, in_lineup, lineup.game_today(d["league"], p, games) or "no game",
+                         f"{today_pts[p.playerId]:.1f}" if today_pts[p.playerId] else "-",
                          roles.get(p.playerId, "-" if self.demo else "loading..."), p.proTeam, status_text(p),
                          f.games, f"{f.baseline:.1f}", f"{f.recent:.1f}", f"{f.trend:+.0%}" if trusted else "-",
+                         f"{vp:+.1f}" if vp is not None else "-",
                          f"{split_of(p, year, 'total').get('applied_total', 0):.0f}"))
             hot = trusted and f.trend >= d["cfg"]["thresholds"]["trend_pct"]
             cold = trusted and f.trend <= -d["cfg"]["thresholds"]["trend_pct"]
@@ -617,8 +640,10 @@ class App(tk.Tk):
             beats = worst if worst and fa.healthy and fa.worth > worst.worth * (1 + t["waiver_margin"]) else None
             upgrades += bool(beats)
             trusted = fa.games >= t["min_games"]
+            vp = projections.vs_projection(p, d["league"].year, d["rules"])
             rows.append((p.name, p.position, p.proTeam, status_text(p), fa.games, f"{fa.baseline:.1f}",
-                         f"{fa.recent:.1f}", f"{fa.trend:+.0%}" if trusted else "-", f"{fa.worth:.1f}",
+                         f"{fa.recent:.1f}", f"{fa.trend:+.0%}" if trusted else "-",
+                         f"{vp:+.1f}" if vp is not None else "-", f"{fa.worth:.1f}",
                          beats.player.name if beats else "", f"+{fa.worth - beats.worth:.1f}" if beats else ""))
             tags.append((status_tag(p) or ("hot" if beats else ""),))
         self.free_agents.set_rows(rows, tags)
@@ -656,6 +681,8 @@ class App(tk.Tk):
             rows.append((p.name + (" *" if proj else ""), p.position, p.proTeam, p.lineupSlot,
                          status_text(p), games(s if split_key else season),
                          f"{season.get('applied_total', 0):.0f}", f"{fp_per_game(s, rules):.1f}",
+                         f"{fp_per_game(split_of(p, year, 'projected'), rules):.1f}",
+                         f"{vp:+.1f}" if (vp := projections.vs_projection(p, year, rules)) is not None else "-",
                          *(box(s, stat) for stat in BOX)))
             tags.append((status_tag(p),))
         order = sorted(range(len(rows)), key=lambda i: -float(rows[i][7]))
