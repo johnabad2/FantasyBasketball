@@ -66,8 +66,10 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   players in your league and up is always better for fantasy (turnovers are flipped). The side
   table shows who has the edge on each stat in fantasy points per game. "Compare with..." on the
   Player tab starts a comparison from the player you're looking at.
-- **Activity**: recent adds, drops and trades, plus the league chat (in blue; private DMs are
-  never read). Filter to everything, moves only or chat only
+- **Activity**: a feed grouped by day. Trades show as cards like ESPN's League Assistant (each
+  team, its manager and who it receives, with photos; accepted trades say when they go through),
+  adds/drops as rows, and the league chat in blue (private DMs are never read). Filter to
+  everything, trades, moves or chat; click a player to open him
 
 Click a column header to sort; double-click a player or team to open it. The window refreshes
 from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here too.

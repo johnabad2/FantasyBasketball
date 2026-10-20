@@ -14,6 +14,8 @@ from tkinter import ttk
 
 import fantasy
 import chat
+import feed
+from activity import ActivityFeed
 import gamelog
 import lineup
 import news
@@ -696,17 +698,17 @@ class App(tk.Tk):
         bar.pack(fill="x", pady=(0, 8))
         ttk.Label(bar, text="Show").pack(side="left")
         self.activity_show = ttk.Combobox(bar, state="readonly", width=16,
-                                          values=["Everything", "Moves only", "Chat only"])
+                                          values=["Everything", "Trades only", "Moves only", "Chat only"])
         self.activity_show.current(0)
         self.activity_show.pack(side="left", padx=6)
         self.activity_show.bind("<<ComboboxSelected>>", lambda e: self._fill_activity())
-        ttk.Label(bar, text="Chat in blue.", style="Sub.TLabel").pack(side="left", padx=10)
-        self.activity = Table(f, ("when", "team", "move", "player / message"),
-                              text_cols=("when", "team", "move", "player / message"), wide=("player / message",),
-                              widths={"when": 140, "team": 370, "move": 145},
-                              on_open=lambda v: self.show_player(v[3]) if v[2] != "chat" else None)
-        self.activity.tree.tag_configure("chat", foreground=T["chat"])
+        ttk.Label(bar, text="Chat in blue. Click a player to open him.", style="Sub.TLabel").pack(side="left", padx=10)
+        self.activity = ActivityFeed(f, self.show_player, self._feed_photo)
         self.activity.pack(fill="both", expand=True)
+
+    def _feed_photo(self, pid, done):
+        if not self.demo:
+            self.run(lambda: headshot(pid), done)
 
     # ------------------------------------------------------------ background work
 
@@ -776,7 +778,9 @@ class App(tk.Tk):
             activity = league.recent_activity(size=50)
         except Exception:
             activity = []
-        chat_msgs = chat.league_chat(league) if getattr(league, "pro_schedule", None) else []
+        live = getattr(league, "pro_schedule", None)  # the demo league has no ESPN feed
+        chat_msgs = chat.league_chat(league) if live else []
+        trades = feed.trades(league) if live else []
         analysis = fantasy.analyze(league, me, fa_count=100)
         mine, others, fas = analysis
         projected = projections.projected_final(league)
@@ -790,7 +794,7 @@ class App(tk.Tk):
                     injuries=injuries, plan=plan,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3),
-                    activity=activity, chat=chat_msgs)
+                    activity=activity, chat=chat_msgs, trade_feed=trades)
 
     def _show(self, d):
         self.data = d
@@ -960,20 +964,21 @@ class App(tk.Tk):
 
     def _fill_activity(self):
         show = self.activity_show.get()
-        items = []  # (time, row, tag)
-        if show != "Chat only":
+        items = []  # (when, kind, data)
+        if show in ("Everything", "Trades only"):
+            items += [(t["when"], "trade", t) for t in self.data.get("trade_feed") or []]
+        if show in ("Everything", "Moves only"):
             for act in self.data["activity"]:
                 when = datetime.fromtimestamp(act.date / 1000)
                 for team, action, player, *_ in act.actions:
-                    items.append((when, (getattr(team, "team_name", team) or "-", action.lower(),
-                                         getattr(player, "name", player) or "-"), ()))
-        if show != "Moves only":
-            for m in self.data.get("chat") or []:
-                items.append((m["when"], (m["team"] or "-", "chat", f'{m["author"]}: {m["text"]}'), ("chat",)))
+                    if action.upper() == "TRADED":
+                        continue  # shown as a trade card
+                    items.append((when, "move", (getattr(team, "team_name", team) or "-", action,
+                                                 getattr(player, "name", player) or "-")))
+        if show in ("Everything", "Chat only"):
+            items += [(m["when"], "chat", m) for m in self.data.get("chat") or []]
         items.sort(key=lambda x: x[0], reverse=True)
-        rows = [(when.strftime("%d %b %H:%M"), *row) for when, row, _ in items]
-        tags = [tag for _, _, tag in items]
-        self.activity.set_rows(rows or [("", "Nothing here yet.", "", "")], tags if rows else None)
+        self.activity.show(items)
 
     # ------------------------------------------------------------ navigation
 
