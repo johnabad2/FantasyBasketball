@@ -14,6 +14,13 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
    These cookies log into your ESPN account, so never share `config\config.json`.
 5. Run `.venv\Scripts\python fantasy.py teams` and put your team's id in **my_team_id**.
 
+## The window
+
+Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). It opens with tabs for
+Standings, My Team (alerts + roster form), League (any team's roster, any stat window), Player
+(search any NBA player) and Activity. Click a column header to sort; double-click a player or
+team to open it. **Refresh** pulls the latest from ESPN. `--demo` works here too.
+
 ## Commands
 
 ```
