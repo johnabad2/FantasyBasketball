@@ -8,7 +8,7 @@ import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent  # project folder (this file is in app/)
 DATA = ROOT / "data"
 HISTORY = DATA / "history.db"
 NICKNAMES = ROOT / "config" / "nicknames.json"
@@ -256,7 +256,7 @@ def cmd_activity(league, size):
 
 def cmd_history(league, team):
     if not HISTORY.exists():
-        raise SystemExit("No history yet. Run `python fantasy.py export` (or let alerts run) to start one.")
+        raise SystemExit("No history yet. Run `python app\fantasy.py export` (or let alerts run) to start one.")
     with _db() as db:
         days = db.execute("SELECT day, points FROM team_daily WHERE team_id = ? ORDER BY day",
                           (team.team_id,)).fetchall()

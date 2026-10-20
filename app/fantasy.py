@@ -1,18 +1,18 @@
 """ESPN NBA fantasy tracker: standings, rosters, and trade / waiver / injury alerts.
 
 Usage:
-    python fantasy.py teams               list every team and its id (to set my_team_id)
-    python fantasy.py standings           league table + this week's matchups
-    python fantasy.py roster [TEAM]       one roster with form (default: your team)
-    python fantasy.py alerts [--notify]   what you should do now; --notify pops Windows toasts
+    python app\fantasy.py teams               list every team and its id (to set my_team_id)
+    python app\fantasy.py standings           league table + this week's matchups
+    python app\fantasy.py roster [TEAM]       one roster with form (default: your team)
+    python app\fantasy.py alerts [--notify]   what you should do now; --notify pops Windows toasts
 
   League stats:
-    python fantasy.py league [--split S]  every team's roster with points and box-score averages
-    python fantasy.py player NAME         any NBA player's full stat line + where their points come from
-    python fantasy.py scoring             the league's scoring rules
-    python fantasy.py activity [-n N]     recent adds, drops and trades
-    python fantasy.py export              write data/*.csv + league.json and save today's snapshot
-    python fantasy.py history [TEAM]      a team's points day by day (from saved snapshots)
+    python app\fantasy.py league [--split S]  every team's roster with points and box-score averages
+    python app\fantasy.py player NAME         any NBA player's full stat line + where their points come from
+    python app\fantasy.py scoring             the league's scoring rules
+    python app\fantasy.py activity [-n N]     recent adds, drops and trades
+    python app\fantasy.py export              write data/*.csv + league.json and save today's snapshot
+    python app\fantasy.py history [TEAM]      a team's points day by day (from saved snapshots)
 Add --demo before the command to run against made-up data without an ESPN league.
 """
 import argparse
@@ -24,9 +24,9 @@ from pathlib import Path
 import stats
 from stats import owner_names, table
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent  # project folder (this file is in app/)
 CONFIG = ROOT / "config" / "config.json"
-SEEN = ROOT / "seen_alerts.json"
+SEEN = ROOT / "data" / "seen_alerts.json"
 
 OUT_STATUSES = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 SHAKY_STATUSES = {"DAY_TO_DAY", "QUESTIONABLE", "DOUBTFUL"}
@@ -242,6 +242,7 @@ def notify(alerts):
     """Toast only alerts not seen on the previous run. Alerts that clear and come back re-notify."""
     seen = load_seen()
     fresh = [a for a in alerts if a.key not in seen]
+    SEEN.parent.mkdir(exist_ok=True)
     SEEN.write_text(json.dumps(sorted(a.key for a in alerts)))
     if not fresh:
         return 0
@@ -256,7 +257,7 @@ def notify(alerts):
                      msg=a.detail.replace("\n      ", "\n")[:250]).show()
     if len(fresh) > 3:
         Notification(app_id="Fantasy Hoops", title=f"+{len(fresh) - 3} more alerts",
-                     msg="Run: python fantasy.py alerts").show()
+                     msg="Run: python app\fantasy.py alerts").show()
     return len(fresh)
 
 
@@ -269,7 +270,7 @@ def find_team(league, query):
     matches = [tm for tm in league.teams if str(query).lower() in tm.team_name.lower()]
     if len(matches) == 1:
         return matches[0]
-    sys.exit(f"No single team matches '{query}'. Run `python fantasy.py teams` to see names and ids.")
+    sys.exit(f"No single team matches '{query}'. Run `python app\fantasy.py teams` to see names and ids.")
 
 
 def cmd_teams(league, cfg):
@@ -362,7 +363,7 @@ def connect(cfg):
 
 def my_team(league, cfg):
     if cfg.get("my_team_id") is None:
-        sys.exit("Set my_team_id in config.json. Run `python fantasy.py teams` to find it.")
+        sys.exit("Set my_team_id in config.json. Run `python app\fantasy.py teams` to find it.")
     return find_team(league, cfg["my_team_id"])
 
 

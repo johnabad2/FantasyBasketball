@@ -1,7 +1,7 @@
 """Desktop window for the fantasy tracker.
 
-    .venv\\Scripts\\pythonw app.py          (or double-click "Fantasy Hoops.bat")
-    .venv\\Scripts\\pythonw app.py --demo   made-up league, no ESPN needed
+    .venv\\Scripts\\pythonw app\\main.py          (or double-click "Fantasy Hoops.bat")
+    .venv\\Scripts\\pythonw app\\main.py --demo   made-up league, no ESPN needed
 """
 import queue
 import sys

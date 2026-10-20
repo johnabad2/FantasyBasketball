@@ -3,8 +3,6 @@ config.json
 
 .venv/
 __pycache__/
-seen_alerts.json
-check.log
 
-# exports and daily history: your league's data, keep local
+# exports, daily history, photos, alert memory and the check log: your league's data, keep local
 data/

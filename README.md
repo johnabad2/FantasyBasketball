@@ -12,11 +12,24 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 4. **espn_s2 / swid** (private leagues only): on espn.com, logged in, open DevTools (F12) →
    Application → Cookies → `https://www.espn.com`, then copy the `espn_s2` and `SWID` values.
    These cookies log into your ESPN account, so never share `config\config.json`.
-5. Run `.venv\Scripts\python fantasy.py teams` and put your team's id in **my_team_id**.
+5. Run `.venv\Scripts\python app\fantasy.py teams` and put your team's id in **my_team_id**.
+
+## Folder layout
+
+```
+Fantasy Hoops.bat   double-click to open the window
+app/                all the Python code (main.py = the window, fantasy.py = commands + alerts)
+config/             config.json (your ESPN cookies, never committed), nicknames.json, requirements
+scripts/            check.ps1, run by the scheduled task
+data/               exports, history, cached photos, check log (stays on your PC)
+```
+
+Keep `app/`, `config/` and `scripts/` where they are relative to each other; the code finds
+its config and data from its own location.
 
 ## The window
 
-Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Tabs:
+Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`). Tabs:
 
 - **Standings**, **My Team** (alerts + roster form)
 - **Free Agents**: the top 100 available players; green ones beat your weakest player
@@ -48,24 +61,24 @@ from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here
 ## Commands
 
 ```
-.venv\Scripts\python fantasy.py standings
-.venv\Scripts\python fantasy.py roster              # your team
-.venv\Scripts\python fantasy.py roster "Brick"      # a friend's team (id or part of the name)
-.venv\Scripts\python fantasy.py alerts
-.venv\Scripts\python fantasy.py alerts --notify     # also pops Windows notifications for new alerts
-.venv\Scripts\python fantasy.py --demo alerts       # made-up league, no ESPN needed
+.venv\Scripts\python app\fantasy.py standings
+.venv\Scripts\python app\fantasy.py roster              # your team
+.venv\Scripts\python app\fantasy.py roster "Brick"      # a friend's team (id or part of the name)
+.venv\Scripts\python app\fantasy.py alerts
+.venv\Scripts\python app\fantasy.py alerts --notify     # also pops Windows notifications for new alerts
+.venv\Scripts\python app\fantasy.py --demo alerts       # made-up league, no ESPN needed
 ```
 
 League-wide stats:
 
 ```
-.venv\Scripts\python fantasy.py league                    # every team: points, each player's box-score averages
-.venv\Scripts\python fantasy.py league --split last_15    # same, for last_7 / last_15 / last_30 / projected
-.venv\Scripts\python fantasy.py player jokic              # any NBA player: every split + where their points come from
-.venv\Scripts\python fantasy.py scoring                   # the league's scoring rules
-.venv\Scripts\python fantasy.py activity -n 50            # recent adds, drops and trades
-.venv\Scripts\python fantasy.py export                    # data\players.csv, teams.csv, league.json (opens in Excel)
-.venv\Scripts\python fantasy.py history "Ballymum"        # a team's points day by day
+.venv\Scripts\python app\fantasy.py league                    # every team: points, each player's box-score averages
+.venv\Scripts\python app\fantasy.py league --split last_15    # same, for last_7 / last_15 / last_30 / projected
+.venv\Scripts\python app\fantasy.py player jokic              # any NBA player: every split + where their points come from
+.venv\Scripts\python app\fantasy.py scoring                   # the league's scoring rules
+.venv\Scripts\python app\fantasy.py activity -n 50            # recent adds, drops and trades
+.venv\Scripts\python app\fantasy.py export                    # data\players.csv, teams.csv, league.json (opens in Excel)
+.venv\Scripts\python app\fantasy.py history "Ballymum"        # a team's points day by day
 ```
 
 `export` and `alerts` each save a daily snapshot to `data\history.db`, which is what `history`
@@ -94,9 +107,9 @@ Tune any of these under `thresholds` in `config\config.json`.
 
 ## Automatic checks
 
-`check.ps1` runs `alerts --notify` and logs to `check.log`. You only get a notification for
+`scripts\check.ps1` runs `export` and `alerts --notify` and logs to `data\check.log`. You only get a notification for
 alerts that are new since the last run. To run it every 3 hours, set up a scheduled task:
 
 ```
-schtasks /Create /TN "FantasyHoops" /SC HOURLY /MO 3 /TR "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"<full path to>\check.ps1\""
+schtasks /Create /TN "FantasyHoops" /SC HOURLY /MO 3 /TR "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"<full path to>\scripts\check.ps1\""
 ```
