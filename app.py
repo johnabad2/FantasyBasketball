@@ -608,11 +608,13 @@ class App(tk.Tk):
         pick = self.chart_range.get()
         games = self._games if pick == "All games" else self._games[-int(pick.split()[-1]):]
         scoring = (self.data or {}).get("rules", {})
-        worse = "  (fewer is better for you)" if scoring.get(stat, 0) < 0 else ""
+        fewer_is_better = scoring.get(stat, 0) < 0  # e.g. TO, FGA, FTA cost you points
+        worse = "  (fewer is better for you)" if fewer_is_better else ""
         span = "" if pick == "All games" else f", {pick.lower()}"
         self.chart.show(games, stat, f"{gamelog.STAT_NAMES[stat]} per game  ·  {self._chart_name}{worse}",
                         note=f"{self._games_label}{span}  ·  {len(games)} games  ·  average is over the games shown"
-                             "  ·  hover a bar for that game's box score")
+                             "  ·  hover a bar for that game's box score",
+                        fewer_is_better=fewer_is_better)
 
     def _breakdown_clicked(self, _event):
         sel = self.breakdown.tree.selection()

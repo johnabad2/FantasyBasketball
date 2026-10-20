@@ -38,14 +38,18 @@ class GameChart(tk.Canvas):
     def __init__(self, parent, **kw):
         super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground="#e3e3e0", **kw)
         self.games, self.stat, self.title, self.note = [], "FP", "", ""
+        self.fewer_is_better = False
         self.message = "Pick a player to see their game-by-game chart."
         self.bars = []  # (x0, x1, game) for hover hit-testing
         self.bind("<Configure>", lambda e: self.draw())
         self.bind("<Motion>", self._hover)
         self.bind("<Leave>", lambda e: self.delete("hover"))
 
-    def show(self, games, stat, title, note=""):
+    def show(self, games, stat, title, note="", fewer_is_better=False):
+        """fewer_is_better: for stats that cost fantasy points (TO, FGA, FTA), swap the colors so
+        blue still means a good game for you and red a bad one."""
         self.games, self.stat, self.title, self.note, self.message = games, stat, title, note, ""
+        self.fewer_is_better = fewer_is_better
         self.draw()
 
     def show_message(self, text):
@@ -73,7 +77,8 @@ class GameChart(tk.Canvas):
         # title + legend (identity is never color alone: the legend names both colors)
         self.create_text(x0, 14, text=self.title, anchor="w", fill=INK, font=(FONT, 11, "bold"))
         lx = w - self.PAD_R
-        for label, color in (("below average", BELOW), ("above average", ABOVE)):
+        above_c, below_c = (BELOW, ABOVE) if self.fewer_is_better else (ABOVE, BELOW)
+        for label, color in (("below average", below_c), ("above average", above_c)):
             t = self.create_text(lx, 14, text=label, anchor="e", fill=INK_2, font=(FONT, 9))
             bx = self.bbox(t)[0] - 6
             self.create_rectangle(bx - 10, 9, bx, 19, fill=color, outline="")
@@ -97,7 +102,7 @@ class GameChart(tk.Canvas):
             self.bars.append((x0 + i * slot, x0 + (i + 1) * slot, g, v))
             if v != 0:
                 self.create_rectangle(bx0, min(y(v), y(0)), max(bx1, bx0 + 2), max(y(v), y(0)),
-                                      fill=ABOVE if v >= avg else BELOW, outline="")
+                                      fill=above_c if v >= avg else below_c, outline="")
 
         # average line, labeled at the right end
         self.create_line(x0, y(avg), x1, y(avg), fill=INK_2, dash=(5, 3), width=2)
