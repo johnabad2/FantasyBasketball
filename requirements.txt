@@ -1,0 +1,2 @@
+espn-api==1.0.1
+winotify==1.1.0

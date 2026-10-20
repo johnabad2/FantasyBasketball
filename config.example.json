@@ -1,0 +1,15 @@
+{
+  "league_id": 875370944,
+  "year": 2027,
+  "espn_s2": "",
+  "swid": "",
+  "my_team_id": null,
+  "thresholds": {
+    "trend_pct": 0.25,
+    "min_games": 5,
+    "waiver_margin": 0.10,
+    "trade_margin": 0.10,
+    "max_waiver_alerts": 3,
+    "max_trade_alerts": 3
+  }
+}

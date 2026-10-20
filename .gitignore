@@ -1,0 +1,7 @@
+# ESPN login cookies live here: never commit
+config.json
+
+.venv/
+__pycache__/
+seen_alerts.json
+check.log
