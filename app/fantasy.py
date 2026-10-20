@@ -262,11 +262,18 @@ def ir_alerts(league, my_team, injuries):
     import planner
     room = planner.open_ir_slots(league, my_team)
     alerts = []
-    for p, back in planner.ir_candidates(league, my_team, injuries)[:room]:
+    for p, back, certain in planner.ir_candidates(league, my_team, injuries)[:room]:
         when = f"back ~{back:%d %b}" if back else "no return date yet"
-        alerts.append(Alert(f"ir:{p.playerId}:{back}", 2, f"Move {p.name} to IR ({when})",
-                            f"Your IR slot is empty. Moving {p.name} there frees a roster spot, so you can "
-                            "add a streamer without dropping anyone (see Week Ahead)."))
+        if certain:
+            alerts.append(Alert(f"ir:{p.playerId}:{back}", 2, f"Move {p.name} to IR ({when})",
+                                f"He's listed INJ, so he's IR-eligible and your IR slot is empty. Moving him "
+                                "there frees a roster spot to add a streamer without dropping anyone (see Week Ahead)."))
+        else:
+            alerts.append(Alert(f"ir?:{p.playerId}:{back}", 3, f"Check if {p.name} is IR-eligible ({when})",
+                                f"He's listed O (out). ESPN only lets an O player into IR once it marks him "
+                                "IR-eligible - check his player card on ESPN.\n      If he is: move him to your "
+                                "empty IR slot and add a streamer without dropping anyone.\n      If not: keep him "
+                                "on your bench, or drop him for a streamer only if the Week Ahead tab says it's fair."))
     return alerts
 
 
@@ -276,10 +283,20 @@ def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
     if not picks or picks[0]["gain"] < min_gain:
         return []
     s = picks[0]
-    drop_base = form_of(s["drop"], league.year).baseline
-    how = (f"move {s['drop'].name} to IR" if s["to_ir"] else
-           f"drop {s['drop'].name} (base {drop_base:.1f} vs his {s['fa'].baseline:.1f})")
-    return [Alert(f"stream:{s['fa'].player.playerId}:{s['drop'].playerId}", 2,
+    if s["open_spot"]:
+        how = "use your open roster spot (no drop needed)"
+    elif s["ir"] and s["ir_certain"]:
+        how = f"move {s['ir'].name} (INJ) to IR"
+    else:
+        drop = (f"drop {s['drop'].name} (base {form_of(s['drop'], league.year).baseline:.1f} vs his "
+                f"{s['fa'].baseline:.1f})") if s["drop"] else None
+        if s["ir"]:
+            how = f"move {s['ir'].name} to IR if ESPN lists him IR-eligible" + (f"; otherwise {drop}" if drop else
+                                                                                 "; otherwise skip it")
+        else:
+            how = drop
+    room = "open" if s["open_spot"] else (s["ir"] or s["drop"]).playerId
+    return [Alert(f"stream:{s['fa'].player.playerId}:{room}", 2,
                   f"Stream {s['fa'].player.name}: +{s['gain']:.0f} pts over the next 7 days",
                   f"Add {fmt(s['fa'])} and {how}. He plays {s['games']} games this week, "
                   f"{s['light_games']} of them on days you have empty lineup slots.")]

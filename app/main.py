@@ -497,8 +497,9 @@ class App(tk.Tk):
         ttk.Label(f, text="Streamers: free agents who'd add the most points over the next 7 days",
                   font=(FONT[0], 10, "bold")).pack(anchor="w")
         ttk.Label(f, text="Counts only games on days you'd actually start him. 'make room' = who leaves your active "
-                          "roster: a player listed INJ to your empty IR slot first, otherwise a drop (never someone "
-                          "more than 2 fp/g better long-term than the streamer). No acquisition limit in your league.",
+                          "roster: an open roster spot if you have one, then your empty IR slot (INJ players always qualify; O "
+                          "players only once ESPN marks them IR-eligible, so check on ESPN), otherwise a drop (never "
+                          "someone better long-term than the streamer). No acquisition limit in your league.",
                   style="Sub.TLabel", wraplength=1800).pack(anchor="w")
         self.wk_streams = Table(f, ("add", "pos", "nba", "base", "games", "on light days", "gain (7 days)",
                                     "make room"),
@@ -938,8 +939,16 @@ class App(tk.Tk):
         rows = []
         for s in plan.get("streamers") or []:
             fa = s["fa"]
-            drop_base = fantasy.form_of(s["drop"], league.year).baseline
-            room = f"IR: {s['drop'].name}" if s["to_ir"] else f"drop {s['drop'].name} ({drop_base:.1f})"
+            drop = (f"drop {s['drop'].name} ({fantasy.form_of(s['drop'], league.year).baseline:.1f})"
+                    if s["drop"] else "")
+            if s["open_spot"]:
+                room = "open roster spot: just add him"
+            elif s["ir"] and s["ir_certain"]:
+                room = f"IR: {s['ir'].name} (INJ)"
+            elif s["ir"]:
+                room = f"IR: {s['ir'].name} if IR-eligible" + (f", else {drop}" if drop else "")
+            else:
+                room = drop
             rows.append((fa.player.name, fa.player.position, fa.player.proTeam, f"{fa.baseline:.1f}", s["games"],
                          s["light_games"], f"+{s['gain']:.0f}", room))
         self.wk_streams.set_rows(rows or [("No free agent adds points this week.", "", "", "", "", "", "", "")])

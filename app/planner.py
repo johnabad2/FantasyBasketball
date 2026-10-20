@@ -10,14 +10,14 @@ from fantasy import OUT_STATUSES, form_of
 from projections import nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
-LONG_TERM_SLACK = 2.0  # a streamer may replace someone at most this many fp/g better than him
+LONG_TERM_SLACK = 0.0  # never drop someone better long-term than the streamer (fp/g)
 
 
 def lineup_slots(league):
     """The league's active lineup slots, e.g. ['PG', 'SG', ..., 'UT', 'UT', 'UT'] (cached)."""
     if getattr(league, "_fh_slots", None):
         return league._fh_slots
-    slots, ir = DEFAULT_SLOTS, 1
+    slots, ir, bench = DEFAULT_SLOTS, 1, 3
     try:
         from espn_api.basketball.constant import POSITION_MAP
         settings = league.espn_request.league_get(params={"view": "mSettings"})["settings"]
@@ -26,10 +26,18 @@ def lineup_slots(league):
                  if POSITION_MAP.get(int(k)) not in (None, "BE", "IR")]
         slots = found or DEFAULT_SLOTS
         ir = sum(n for k, n in counts.items() if POSITION_MAP.get(int(k)) == "IR")
+        bench = sum(n for k, n in counts.items() if POSITION_MAP.get(int(k)) == "BE")
     except Exception:
         pass
-    league._fh_slots, league._fh_ir = slots, ir
+    league._fh_slots, league._fh_ir, league._fh_bench = slots, ir, bench
     return slots
+
+
+def open_roster_spots(league, team):
+    """Free spots on the active roster (lineup + bench), e.g. after moving someone to IR."""
+    slots = lineup_slots(league)
+    used = sum(1 for p in team.roster if p.lineupSlot != "IR")
+    return max(len(slots) + getattr(league, "_fh_bench", 3) - used, 0)
 
 
 def open_ir_slots(league, team):
@@ -38,18 +46,23 @@ def open_ir_slots(league, team):
 
 
 def ir_candidates(league, team, injuries, days=7):
-    """IR-eligible players not on IR yet who won't be back within `days`: (player, return date or None).
-    ESPN only lets players listed INJ (injury reserve) into the IR slot - plain OUT isn't enough."""
+    """Players who could go to IR and won't be back within `days`: [(player, return date or None, certain)].
+
+    ESPN rules: a player listed INJ (injury reserve) can always go on IR (certain=True). A player
+    listed O (out) can only if ESPN has also marked him IR-eligible - and ESPN doesn't publish that
+    flag in any data this app can read, so those come back with certain=False and the app asks
+    you to check his IR eligibility on ESPN before moving him."""
     soon = date.today() + timedelta(days=days)
     out = []
     for p in team.roster:
-        if p.lineupSlot == "IR" or (p.injuryStatus or "ACTIVE") != "INJURY_RESERVE":
+        status = p.injuryStatus or "ACTIVE"
+        if p.lineupSlot == "IR" or status not in ("INJURY_RESERVE", "OUT"):
             continue
         info = injuries.get(p.playerId)
         back = info["return_date"] if info else None
         if back is None or back > soon:
-            out.append((p, back))
-    return out
+            out.append((p, back, status == "INJURY_RESERVE"))
+    return sorted(out, key=lambda x: not x[2])  # sure things first
 
 
 def best_lineup(cands, slots):
@@ -123,9 +136,11 @@ def week(league, players, values, injuries, days=7):
 
 
 def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
-    """Free agents who'd add the most points over the next `days` days, each paired with the
-    roster player whose drop costs the least - or, with an open IR slot, an injured player to move
-    to IR instead. [{fa, drop, to_ir, gain, games, light_games}] best first."""
+    """Free agents who'd add the most points over the next `days` days, and how to make room:
+    'ir' = an injured player who could go to your open IR slot (ir_certain=False means only if
+    ESPN lists him IR-eligible), 'drop' = the best fair drop (never someone more than
+    LONG_TERM_SLACK better long-term). [{fa, ir, ir_certain, drop, gain, drop_gain, games,
+    light_games}] best first; gain assumes the IR move when there is one."""
     if not getattr(league, "pro_schedule", None):
         return []
     roster = list(team.roster)
@@ -138,7 +153,8 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
     drops = list(dict.fromkeys(by_value[:drop_pool] + [p for p in roster if (p.injuryStatus or "") in OUT_STATUSES
                                                          and p.lineupSlot != "IR"]))
     # With an open IR slot, an injured player can go to IR instead of being dropped.
-    ir_moves = [p for p, _ in ir_candidates(league, team, injuries, days)][:open_ir_slots(league, team)]
+    ir_moves = ir_candidates(league, team, injuries, days)[:open_ir_slots(league, team)]
+    free_spot = open_roster_spots(league, team) > 0  # e.g. right after moving someone to IR
     out = []
     for f in free_agents:
         fa = f.player
@@ -148,19 +164,31 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
         if not games:
             continue
         vals = {**values, fa.playerId: f.baseline}
-        best = None
-        for ir in ir_moves:  # first choice: nobody leaves your team
+        if free_spot:  # simplest case: just add him
             gain = sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base
-            best = (gain, ir, True)
+            if gain > 0.5:
+                out.append({"fa": f, "open_spot": True, "ir": None, "ir_certain": False, "drop": None,
+                            "drop_gain": None, "gain": gain, "games": len(games),
+                            "light_games": sum(1 for d in games if d in light_days)})
+            continue
+        ir = ir_moves[0] if ir_moves else None  # (player, back, certain): nobody leaves your team
+        ir_gain = (sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base) if ir else None
+        best_drop = None
         for drop in drops:
             if values[drop.playerId] > f.baseline + LONG_TERM_SLACK:
                 continue  # dropping is permanent: never lose a better player for a one-week stream
             trial = [p for p in roster if p is not drop] + [fa]
             gain = sum(d["points"] for d in week(league, trial, vals, injuries, days)) - base
-            if best is None or gain > best[0] + 0.05:
-                best = (gain, drop, False)
-        if best and best[0] > 0.5:
-            out.append({"fa": f, "drop": best[1], "to_ir": best[2], "gain": best[0], "games": len(games),
+            if best_drop is None or gain > best_drop[0] + 0.05:
+                best_drop = (gain, drop)
+        # a sure IR move beats any drop; an uncertain one is shown together with the drop fallback
+        gain = ir_gain if ir and (ir[2] or not best_drop) else (best_drop[0] if best_drop else None)
+        if ir and not ir[2] and best_drop:
+            gain = max(ir_gain, best_drop[0])
+        if gain is not None and gain > 0.5:
+            out.append({"fa": f, "open_spot": False, "ir": ir[0] if ir else None, "ir_certain": bool(ir and ir[2]),
+                        "drop": best_drop[1] if best_drop else None,
+                        "drop_gain": best_drop[0] if best_drop else None, "gain": gain, "games": len(games),
                         "light_games": sum(1 for d in games if d in light_days)})
     return sorted(out, key=lambda x: -x["gain"])[:top]
 
