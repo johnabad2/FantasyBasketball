@@ -5,12 +5,13 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 
 ## Setup
 
-1. Copy `config.example.json` to `config.json`.
+1. Set up Python: `python -m venv .venv`, then `.venv\Scripts\pip install -r config\requirements.txt`.
+   Copy `config\config.example.json` to `config\config.json`.
 2. **league_id**: the number after `leagueId=` in your ESPN league URL.
 3. **year**: `2027` for the 2026-27 season (ESPN names a season by the year it ends).
 4. **espn_s2 / swid** (private leagues only): on espn.com, logged in, open DevTools (F12) →
    Application → Cookies → `https://www.espn.com`, then copy the `espn_s2` and `SWID` values.
-   These cookies log into your ESPN account, so never share `config.json`.
+   These cookies log into your ESPN account, so never share `config\config.json`.
 5. Run `.venv\Scripts\python fantasy.py teams` and put your team's id in **my_team_id**.
 
 ## Commands
@@ -23,6 +24,22 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 .venv\Scripts\python fantasy.py alerts --notify     # also pops Windows notifications for new alerts
 .venv\Scripts\python fantasy.py --demo alerts       # made-up league, no ESPN needed
 ```
+
+League-wide stats:
+
+```
+.venv\Scripts\python fantasy.py league                    # every team: points, each player's box-score averages
+.venv\Scripts\python fantasy.py league --split last_15    # same, for last_7 / last_15 / last_30 / projected
+.venv\Scripts\python fantasy.py player jokic              # any NBA player: every split + where their points come from
+.venv\Scripts\python fantasy.py scoring                   # the league's scoring rules
+.venv\Scripts\python fantasy.py activity -n 50            # recent adds, drops and trades
+.venv\Scripts\python fantasy.py export                    # data\players.csv, teams.csv, league.json (opens in Excel)
+.venv\Scripts\python fantasy.py history "Ballymum"        # a team's points day by day
+```
+
+`export` and `alerts` each save a daily snapshot to `data\history.db`, which is what `history`
+and the "+X since" numbers in `league` read. The more days it runs (see Automatic checks),
+the more history you get. `data\` stays on your PC; it's in `.gitignore`.
 
 ## How it judges players
 
@@ -42,7 +59,7 @@ The alerts:
 | Sell high | Your player is 25%+ above their base right now |
 | Slumping | Your player is 25%+ below base. Usually hold, don't panic-sell |
 
-Tune any of these under `thresholds` in `config.json`.
+Tune any of these under `thresholds` in `config\config.json`.
 
 ## Automatic checks
 

@@ -5,3 +5,6 @@ config.json
 __pycache__/
 seen_alerts.json
 check.log
+
+# exports and daily history: your league's data, keep local
+data/

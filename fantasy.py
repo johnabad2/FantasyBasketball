@@ -5,6 +5,14 @@ Usage:
     python fantasy.py standings           league table + this week's matchups
     python fantasy.py roster [TEAM]       one roster with form (default: your team)
     python fantasy.py alerts [--notify]   what you should do now; --notify pops Windows toasts
+
+  League stats:
+    python fantasy.py league [--split S]  every team's roster with points and box-score averages
+    python fantasy.py player NAME         any NBA player's full stat line + where their points come from
+    python fantasy.py scoring             the league's scoring rules
+    python fantasy.py activity [-n N]     recent adds, drops and trades
+    python fantasy.py export              write data/*.csv + league.json and save today's snapshot
+    python fantasy.py history [TEAM]      a team's points day by day (from saved snapshots)
 Add --demo before the command to run against made-up data without an ESPN league.
 """
 import argparse
@@ -13,8 +21,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import stats
+from stats import owner_names, table
+
 ROOT = Path(__file__).resolve().parent
-CONFIG = ROOT / "config.json"
+CONFIG = ROOT / "config" / "config.json"
 SEEN = ROOT / "seen_alerts.json"
 
 OUT_STATUSES = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
@@ -243,15 +254,6 @@ def notify(alerts):
 
 # ---------------------------------------------------------------- output
 
-def table(rows, headers):
-    widths = [max(len(str(x)) for x in col) for col in zip(headers, *rows)]
-    line = lambda r: "  ".join(str(x).ljust(w) for x, w in zip(r, widths))
-    print(line(headers))
-    print("  ".join("-" * w for w in widths))
-    for r in rows:
-        print(line(r))
-
-
 def find_team(league, query):
     for tm in league.teams:
         if str(tm.team_id) == str(query):
@@ -263,18 +265,27 @@ def find_team(league, query):
 
 
 def cmd_teams(league, cfg):
-    rows = []
-    for tm in league.teams:
-        owners = ", ".join(
-            f"{o.get('firstName', '')} {o.get('lastName', '')}".strip() if isinstance(o, dict) else str(o)
-            for o in (tm.owners or []))
-        mark = " <- you" if tm.team_id == cfg.get("my_team_id") else ""
-        rows.append((tm.team_id, tm.team_name + mark, owners))
+    rows = [(tm.team_id, tm.team_name + (" <- you" if tm.team_id == cfg.get("my_team_id") else ""),
+             owner_names(tm)) for tm in league.teams]
     table(rows, ("id", "team", "owner(s)"))
+
+
+def season_points_league(league):
+    settings = getattr(league, "settings", None)
+    return getattr(settings, "scoring_type", "") == "TOTAL_SEASON_POINTS"
 
 
 def cmd_standings(league, cfg):
     me = cfg.get("my_team_id")
+    if season_points_league(league):
+        # Whole season is one scoring period: total points is the standings.
+        teams = sorted(league.teams, key=lambda t: -t.points_for)
+        lead = teams[0].points_for
+        rows = [(i, tm.team_name + (" *" if tm.team_id == me else ""), owner_names(tm),
+                 f"{tm.points_for:.1f}", f"{lead - tm.points_for:.1f}" if i > 1 else "-")
+                for i, tm in enumerate(teams, 1)]
+        table(rows, ("#", "team", "owner", "points", "behind"))
+        return
     rows = [(i, tm.team_name + (" *" if tm.team_id == me else ""), f"{tm.wins}-{tm.losses}",
              f"{tm.points_for:.1f}")
             for i, tm in enumerate(league.standings(), 1)]
@@ -306,7 +317,9 @@ def cmd_roster(league, cfg, team_query):
     table(rows, ("player", "pos", "slot", "nba", "status", "gp", "base", "L15", "trend"))
 
 
-def cmd_alerts(league, cfg, do_notify):
+def cmd_alerts(league, cfg, do_notify, save_snapshot):
+    if save_snapshot:
+        stats.snapshot(league, stats.scoring_rules(league))  # so scheduled checks build the history
     alerts = build_alerts(league, my_team(league, cfg), cfg["thresholds"])
     if not alerts:
         print("Nothing to do right now.")
@@ -322,8 +335,8 @@ def cmd_alerts(league, cfg, do_notify):
 
 def load_config():
     if not CONFIG.exists():
-        sys.exit("No config.json yet. Copy config.example.json to config.json and fill it in "
-                 "(see README.md).")
+        sys.exit("No config/config.json yet. Copy config/config.example.json to config/config.json "
+                 "and fill it in (see README.md).")
     cfg = json.loads(CONFIG.read_text())
     cfg["thresholds"] = {**DEFAULT_THRESHOLDS, **cfg.get("thresholds", {})}
     return cfg
@@ -355,6 +368,17 @@ def main():
     r.add_argument("team", nargs="?", help="team id or part of its name (default: yours)")
     a = sub.add_parser("alerts")
     a.add_argument("--notify", action="store_true", help="send Windows notifications for new alerts")
+    lg = sub.add_parser("league")
+    lg.add_argument("--split", choices=stats.SPLITS,
+                    help="stat window to show (default: season, or projection before games)")
+    pl = sub.add_parser("player")
+    pl.add_argument("name", nargs="+")
+    sub.add_parser("scoring")
+    ac = sub.add_parser("activity")
+    ac.add_argument("-n", type=int, default=25, help="how many recent transactions")
+    sub.add_parser("export")
+    hi = sub.add_parser("history")
+    hi.add_argument("team", nargs="?", help="team id or part of its name (default: yours)")
     args = ap.parse_args()
 
     if args.demo:
@@ -372,7 +396,21 @@ def main():
     elif args.cmd == "roster":
         cmd_roster(league, cfg, args.team)
     elif args.cmd == "alerts":
-        cmd_alerts(league, cfg, args.notify)
+        cmd_alerts(league, cfg, args.notify, save_snapshot=not args.demo)
+    elif args.cmd == "league":
+        stats.cmd_league(league, cfg.get("my_team_id"), stats.scoring_rules(league), args.split)
+    elif args.cmd == "player":
+        stats.cmd_player(league, " ".join(args.name), stats.scoring_rules(league))
+    elif args.cmd == "scoring":
+        stats.cmd_scoring(league, stats.scoring_rules(league))
+    elif args.cmd == "activity":
+        stats.cmd_activity(league, args.n)
+    elif args.cmd == "export":
+        if args.demo:
+            sys.exit("export is disabled in --demo so made-up data never lands in data/.")
+        stats.cmd_export(league, stats.scoring_rules(league))
+    elif args.cmd == "history":
+        stats.cmd_history(league, find_team(league, args.team) if args.team else my_team(league, cfg))
 
 
 if __name__ == "__main__":

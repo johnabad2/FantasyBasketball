@@ -53,5 +53,12 @@ def demo_league():
     free_agents[0].stats[f"{YEAR}_last_15"] = split(31.0)  # breakout on waivers
 
     standings = sorted(teams, key=lambda t: (-t.wins, t.losses, -t.points_for))
-    return SimpleNamespace(year=YEAR, teams=teams, standings=lambda: standings,
-                           free_agents=lambda size=50: free_agents[:size], scoreboard=lambda: [])
+    # Same scoring as a typical ESPN points league; statIds as ESPN numbers them.
+    scoring = [(0, 1), (6, 1), (3, 2), (2, 4), (1, 4), (17, 1), (11, -2), (13, 2), (14, -1), (15, 1), (16, -1)]
+    settings = SimpleNamespace(name="Demo League", team_count=len(teams), scoring_type="H2H_POINTS",
+                               trade_deadline=0, acquisition_limit=None,
+                               _raw_scoring_settings={"scoringItems": [
+                                   {"statId": s, "points": p} for s, p in scoring]})
+    return SimpleNamespace(year=YEAR, teams=teams, standings=lambda: standings, settings=settings,
+                           free_agents=lambda size=50: free_agents[:size], scoreboard=lambda: [],
+                           recent_activity=lambda size=25: [], player_map={})
