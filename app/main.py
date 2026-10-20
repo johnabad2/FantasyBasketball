@@ -1058,7 +1058,7 @@ class App(tk.Tk):
         span = "" if pick == "All games" else f", {pick.lower()}"
         self.chart.show(games, stat, f"{gamelog.STAT_NAMES[stat]} per game  ·  {self._chart_name}{worse}",
                         note=f"{self._games_label}{span}  ·  {len(games)} games  ·  average is over the games shown"
-                             "  ·  hover a bar for that game's box score",
+                             "  ·  hover a dot for that game's box score",
                         fewer_is_better=fewer_is_better)
 
     def _breakdown_clicked(self, _event):

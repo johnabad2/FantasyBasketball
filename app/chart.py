@@ -35,7 +35,7 @@ def fmt(v):
 
 
 class GameChart(tk.Canvas):
-    PAD_L, PAD_R, PAD_T, PAD_B = 48, 16, 34, 60
+    PAD_L, PAD_R, PAD_T, PAD_B = 48, 82, 34, 60  # right margin holds the "avg" label
 
     def __init__(self, parent, **kw):
         super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground=C["chart_border"], **kw)
@@ -78,12 +78,12 @@ class GameChart(tk.Canvas):
 
         # title + legend (identity is never color alone: the legend names both colors)
         self.create_text(x0, 14, text=self.title, anchor="w", fill=INK, font=(FONT, 11, "bold"))
-        lx = w - self.PAD_R
+        lx = w - 16
         above_c, below_c = (BELOW, ABOVE) if self.fewer_is_better else (ABOVE, BELOW)
         for label, color in (("below average", below_c), ("above average", above_c)):
             t = self.create_text(lx, 14, text=label, anchor="e", fill=INK_2, font=(FONT, 9))
             bx = self.bbox(t)[0] - 6
-            self.create_rectangle(bx - 10, 9, bx, 19, fill=color, outline="")
+            self.create_oval(bx - 10, 9, bx, 19, fill=color, outline="")
             lx = bx - 22
 
         # recessive grid + y labels
@@ -92,36 +92,36 @@ class GameChart(tk.Canvas):
             self.create_text(x0 - 8, y(t), text=fmt(t), anchor="e", fill=MUTED, font=(FONT, 9))
         self.create_line(x0, y(0), x1, y(0), fill=AXIS)
 
-        # bars: 2px surface gap between neighbours, at least 2px wide
-        n = len(self.games)
-        slot = (x1 - x0) / n
-        gap = 2 if slot > 5 else 1 if slot > 3 else 0
-        self.bars = []
-        bar_w = min(slot - gap, 36)  # thin marks: cap the width when there are only a few games
-        marks = []  # (x0, top, x1, bottom, colour) of each drawn bar
-        for i, (g, v) in enumerate(zip(self.games, vals)):
-            cx = x0 + (i + 0.5) * slot
-            bx0, bx1 = cx - bar_w / 2, cx + bar_w / 2
-            mark = None
-            if v != 0:
-                mark = (bx0, min(y(v), y(0)), max(bx1, bx0 + 2), max(y(v), y(0)),
-                        above_c if v >= avg else below_c)
-                marks.append(mark)
-            self.bars.append((x0 + i * slot, x0 + (i + 1) * slot, g, v, mark))
-        if GLOW:  # faint halo, drawn first so neighbouring bars sit on top of it
-            for mx0, my0, mx1, my1, colour in marks:
-                for grow, fade in ((2, .84), (1, .66)):
-                    self.create_rectangle(mx0 - grow, my0 - grow, mx1 + grow, my1, outline="",
-                                          fill=blend(colour, SURFACE, fade))
-        for mx0, my0, mx1, my1, colour in marks:
-            self.create_rectangle(mx0, my0, mx1, my1, fill=colour, outline="")
-
-        # average line, labeled at the right end
+        # average line first, so the games sit on top of it
         if GLOW:
             for width, fade in ((7, .88), (4, .75)):
                 self.create_line(x0, y(avg), x1, y(avg), fill=blend(INK_2, SURFACE, fade), width=width)
         self.create_line(x0, y(avg), x1, y(avg), fill=INK_2, dash=(5, 3), width=2)
-        t = self.create_text(x1 - 6, y(avg) - 11, text=f"avg {avg:.1f}", anchor="e", fill=INK, font=(FONT, 9, "bold"))
+
+        # one dot per game (blue above his average, red below), joined by a line that fades from
+        # each dot's colour into the next one's
+        n = len(self.games)
+        slot = (x1 - x0) / n
+        r = 6 if n <= 16 else 5 if n <= 40 else 4.5
+        self.dot_r = r
+        self.bars, dots = [], []  # bars: hover columns (x0, x1, game, value, dot)
+        for i, (g, v) in enumerate(zip(self.games, vals)):
+            dot = (x0 + (i + 0.5) * slot, y(v), above_c if v >= avg else below_c)
+            dots.append(dot)
+            self.bars.append((x0 + i * slot, x0 + (i + 1) * slot, g, v, dot))
+        segments = list(zip(dots, dots[1:]))
+        if GLOW:  # soft halo under the line
+            for width, fade in ((8, .88), (5, .74)):
+                for (ax, ay, ac), (bx_, by, bc) in segments:
+                    self._gradient(ax, ay, bx_, by, blend(ac, SURFACE, fade), blend(bc, SURFACE, fade), width)
+        for (ax, ay, ac), (bx_, by, bc) in segments:
+            self._gradient(ax, ay, bx_, by, ac, bc, 2.5)
+        for cx, cy, colour in dots:
+            if GLOW:
+                self.create_oval(cx - r - 3, cy - r - 3, cx + r + 3, cy + r + 3, outline="",
+                                 fill=blend(colour, SURFACE, .74))
+            self.create_oval(cx - r, cy - r, cx + r, cy + r, fill=colour, outline=SURFACE, width=1)
+        t = self.create_text(x1 + 10, y(avg), text=f"avg {avg:.1f}", anchor="w", fill=INK, font=(FONT, 9, "bold"))
         bx = self.bbox(t)
         self.tag_lower(self.create_rectangle(bx[0] - 4, bx[1] - 1, bx[2] + 4, bx[3] + 1, fill=SURFACE,
                                              outline=AXIS), t)
@@ -133,7 +133,7 @@ class GameChart(tk.Canvas):
             if i == best and tag == "worst":
                 continue
             cx = x0 + (i + 0.5) * slot
-            ty = y(vals[i]) - 9 if vals[i] >= 0 else y(vals[i]) + 9
+            ty = y(vals[i]) - r - 9 if vals[i] >= 0 else y(vals[i]) + r + 9
             self.create_text(cx, ty, text=fmt(vals[i]), fill=INK_2, font=(FONT, 9, "bold"))
 
         # x labels: each game when few, otherwise the first game of each month
@@ -157,6 +157,18 @@ class GameChart(tk.Canvas):
             self.create_text(x0, h - 11, text=self.note, anchor="w", fill=MUTED, font=(FONT, 8))
         self.avg = avg
 
+    def _gradient(self, xa, ya, xb, yb, ca, cb, width):
+        """A line from (xa, ya) to (xb, yb) whose colour fades from ca to cb (Tk lines have one
+        colour, so it's drawn as short pieces)."""
+        if ca == cb:
+            self.create_line(xa, ya, xb, yb, fill=ca, width=width, capstyle="round")
+            return
+        steps = max(4, min(16, int(((xb - xa) ** 2 + (yb - ya) ** 2) ** 0.5 / 4)))
+        for k in range(steps):
+            t0, t1 = k / steps, (k + 1) / steps
+            self.create_line(xa + (xb - xa) * t0, ya + (yb - ya) * t0, xa + (xb - xa) * t1, ya + (yb - ya) * t1,
+                             fill=blend(ca, cb, (k + 0.5) / steps), width=width, capstyle="round")
+
     # ------------------------------------------------------------ hover
 
     def _hover(self, event):
@@ -164,17 +176,19 @@ class GameChart(tk.Canvas):
         hit = next((b for b in self.bars if b[0] <= event.x < b[1]), None)
         if not hit or not (self.PAD_T <= event.y <= self.winfo_height() - self.PAD_B):
             return
-        bx0, bx1, g, v, mark = hit
+        bx0, bx1, g, v, dot = hit
         # column wash behind the hovered game (hit target is the full column, not just the bar)
         wash = self.create_rectangle(bx0, self.PAD_T, bx1, self.winfo_height() - self.PAD_B,
                                      fill=HOVER_WASH, outline="", tags="hover")
         self.tag_lower(wash)
-        if mark and GLOW:  # the hovered bar glows a little brighter and sits on top
-            mx0, my0, mx1, my1, colour = mark
-            for grow, fade in ((5, .82), (3, .62), (1, .4)):
-                self.create_rectangle(mx0 - grow, my0 - grow, mx1 + grow, my1, outline="", tags="hover",
-                                      fill=blend(colour, HOVER_WASH, fade))
-            self.create_rectangle(mx0, my0, mx1, my1, fill=colour, outline="", tags="hover")
+        if dot:  # the hovered game's dot grows and glows
+            cx, cy, colour = dot
+            r = self.dot_r + 2
+            if GLOW:
+                for grow, fade in ((9, .84), (6, .66), (3, .45)):
+                    self.create_oval(cx - r - grow, cy - r - grow, cx + r + grow, cy + r + grow, outline="",
+                                     tags="hover", fill=blend(colour, HOVER_WASH, fade))
+            self.create_oval(cx - r, cy - r, cx + r, cy + r, fill=colour, outline=INK, width=1.5, tags="hover")
         diff = v - self.avg
         playoff = "  ·  playoffs" if g.get("playoffs") else ""
         lines = [f"{g['date']:%a %d %b}  ·  {g['opp']}  ·  {g['result']}{playoff}",
