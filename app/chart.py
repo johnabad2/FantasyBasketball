@@ -3,15 +3,17 @@ a dashed average line, best/worst games labeled, and a hover tooltip for every g
 import math
 import tkinter as tk
 
-SURFACE = "#fcfcfb"
-INK = "#0b0b0b"
-INK_2 = "#52514e"
-MUTED = "#66655f"
-GRID = "#e1e0d9"
-AXIS = "#c3c2b7"
-ABOVE = "#2a78d6"  # blue/red diverging pair: validated for color-vision deficiency
-BELOW = "#d9493f"
-HOVER_WASH = "#eef3fb"
+from theme import C
+
+SURFACE = C["chart_surface"]
+INK = C["chart_ink"]
+INK_2 = C["chart_ink2"]
+MUTED = C["chart_muted"]
+GRID = C["chart_grid"]
+AXIS = C["chart_axis"]
+ABOVE = C["above"]  # blue/red diverging pair: validated for color-vision deficiency
+BELOW = C["below"]
+HOVER_WASH = C["chart_wash"]
 FONT = "Segoe UI"
 
 
@@ -36,7 +38,7 @@ class GameChart(tk.Canvas):
     PAD_L, PAD_R, PAD_T, PAD_B = 48, 16, 34, 60
 
     def __init__(self, parent, **kw):
-        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground="#e3e3e0", **kw)
+        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground=C["chart_border"], **kw)
         self.games, self.stat, self.title, self.note = [], "FP", "", ""
         self.fewer_is_better = False
         self.message = "Pick a player to see their game-by-game chart."
@@ -170,6 +172,6 @@ class GameChart(tk.Canvas):
         if bx[3] > self.winfo_height() - 6:
             self.move(t, 0, -(bx[3] - self.winfo_height()) - 10)
             bx = self.bbox(t)
-        box = self.create_rectangle(bx[0] - 8, bx[1] - 6, bx[2] + 8, bx[3] + 6, fill="white",
-                                    outline="#d6d5cf", tags="hover")
+        box = self.create_rectangle(bx[0] - 8, bx[1] - 6, bx[2] + 8, bx[3] + 6, fill=C["tooltip_bg"],
+                                    outline=C["tooltip_border"], tags="hover")
         self.tag_raise(t, box)

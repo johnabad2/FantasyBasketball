@@ -5,15 +5,17 @@ axis" means high for the league, not just higher than the other player. Axes are
 so up is always better for fantasy (turnovers are flipped)."""
 import tkinter as tk
 
+from theme import C
+
 from stats import fp_per_game, season_or_projection, split_of
 
-SURFACE = "#fcfcfb"
-INK = "#0b0b0b"
-INK_2 = "#52514e"
-MUTED = "#66655f"
-AXIS = "#c3c2b7"
-HOVER_WASH = "#eef3fb"
-SERIES = ["#2a78d6", "#eb6834"]  # categorical slots 1 & 2 (blue, orange), in fixed order
+SURFACE = C["chart_surface"]
+INK = C["chart_ink"]
+INK_2 = C["chart_ink2"]
+MUTED = C["chart_muted"]
+AXIS = C["chart_axis"]
+HOVER_WASH = C["chart_wash"]
+SERIES = C["series"]  # categorical slots 1 & 2 (blue, orange), in fixed order
 FONT = "Segoe UI"
 
 RAW_AXES = [("FP", "Fantasy pts"), ("PTS", "PTS"), ("REB", "REB"), ("AST", "AST"), ("STL", "STL"),
@@ -61,7 +63,7 @@ class ParallelChart(tk.Canvas):
     PAD_L, PAD_R, PAD_T, PAD_B = 64, 52, 56, 78
 
     def __init__(self, parent, **kw):
-        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground="#e3e3e0", **kw)
+        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground=C["chart_border"], **kw)
         self.axes, self.players, self.ranges, self.inverted = [], [], {}, set()
         self.title, self.note = "", ""
         self.message = "Pick two players above and press Compare."
@@ -178,6 +180,6 @@ class ParallelChart(tk.Canvas):
         if bx[2] > self.winfo_width() - 6:
             self.move(t, -(bx[2] - bx[0]) - 28, 0)
             bx = self.bbox(t)
-        box = self.create_rectangle(bx[0] - 8, bx[1] - 6, bx[2] + 8, bx[3] + 6, fill="white",
-                                    outline="#d6d5cf", tags="hover")
+        box = self.create_rectangle(bx[0] - 8, bx[1] - 6, bx[2] + 8, bx[3] + 6, fill=C["tooltip_bg"],
+                                    outline=C["tooltip_border"], tags="hover")
         self.tag_raise(t, box)

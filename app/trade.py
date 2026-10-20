@@ -5,15 +5,17 @@ as many as it has active lineup slots. That's what scores in a points league; th
 mostly doesn't. Rest-of-season impact = change in lineup strength x games left."""
 import tkinter as tk
 
+from theme import C
+
 from fantasy import form_of
 
-SURFACE = "#fcfcfb"
-INK = "#0b0b0b"
-INK_2 = "#52514e"
-MUTED = "#66655f"
-GRID = "#e1e0d9"
-OTHER = "#c3c2b7"   # uninvolved teams recede
-SERIES = ["#2a78d6", "#eb6834"]  # team A blue, team B orange (categorical slots 1, 2)
+SURFACE = C["chart_surface"]
+INK = C["chart_ink"]
+INK_2 = C["chart_ink2"]
+MUTED = C["chart_muted"]
+GRID = C["chart_grid"]
+OTHER = C["chart_other"]   # uninvolved teams recede
+SERIES = C["series"]  # team A blue, team B orange (categorical slots 1, 2)
 FONT = "Segoe UI"
 POSITIONS = ["PG", "SG", "SF", "PF", "C"]
 
@@ -170,7 +172,7 @@ class StrengthChart(tk.Canvas):
     The two trading teams are colored; the rest recede to gray."""
 
     def __init__(self, parent, **kw):
-        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground="#e3e3e0", **kw)
+        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground=C["chart_border"], **kw)
         self.result = None
         self.bind("<Configure>", lambda e: self.draw())
 

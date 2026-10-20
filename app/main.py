@@ -18,6 +18,7 @@ import news
 import planner
 import projections
 import stats
+import theme
 from chart import GameChart
 from compare import SERIES, ParallelChart, axes_for, profile
 import trade
@@ -25,24 +26,25 @@ from stats import BOX, SHOOTING_WIDTHS, SPLIT_LABELS, SPLITS, box, fp_per_game, 
 
 FONT = ("Segoe UI", 11)
 COLUMN_SCALE = 1.1  # column widths were tuned at 10pt; scale them with the 11pt font
-# palette: navy chrome, basketball-orange actions, high-contrast text on light panels
-NAVY = "#14213d"        # header bar
-NAVY_2 = "#1f3a5f"      # table headings, selected rows, active toggles
-ORANGE = "#f26b1d"      # primary buttons and the logo
-ORANGE_DARK = "#d4560b"
-PAGE = "#e9eef5"        # window background
-CARD = "#ffffff"        # tables and text panels
-BORDER = "#cfd8e3"
-TEXT = "#111827"
-TEXT_2 = "#374151"      # secondary text (alert details, notes)
-MUTED = "#4b5563"       # small print: dark enough to read comfortably
-STRIPE = "#f3f6fa"      # every other table row
+# palette: navy chrome, basketball-orange actions; light or dark per theme.py (Light/Dark button)
+T = theme.C
+NAVY = T["header"]          # header bar
+NAVY_2 = T["heading_bg"]    # table headings, active toggles
+ORANGE = T["accent"]        # primary buttons and the logo
+ORANGE_DARK = T["accent_dark"]
+PAGE = T["page"]            # window background
+CARD = T["card"]            # tables and text panels
+BORDER = T["border"]
+TEXT = T["text"]
+TEXT_2 = T["text_2"]        # secondary text (alert details, notes)
+MUTED = T["muted"]          # small print, still easy to read
+STRIPE = T["stripe"]        # every other table row
 ACCENT = NAVY_2
 INK_DARK = TEXT
-ME_BG = "#ffe9d9"       # your team / ticked rows: light orange
-RED = "#c62828"
-AMBER = "#b26a00"
-GREEN = "#2e7d32"
+ME_BG = T["me_bg"]          # your team / ticked rows
+RED = T["red"]
+AMBER = T["amber"]
+GREEN = T["green"]
 PRIORITY = {1: ("DO NOW", RED), 2: ("CONSIDER", AMBER), 3: ("FYI", MUTED)}
 AUTO_REFRESH_MIN = 15
 PHOTO_W, PHOTO_H = 300, 218  # ESPN headshots are 600x436; shown at half size
@@ -204,30 +206,53 @@ class App(tk.Tk):
         # tables: white, taller rows, navy headings with white text
         s.configure("Treeview", rowheight=32, font=FONT, background=CARD, fieldbackground=CARD,
                     foreground=TEXT, bordercolor=BORDER, borderwidth=1)
-        s.configure("Treeview.Heading", font=(FONT[0], 10, "bold"), background=NAVY_2, foreground="white",
-                    relief="flat", padding=(6, 6))
-        s.map("Treeview.Heading", background=[("active", "#2b4c7e")], foreground=[("active", "white")])
-        s.map("Treeview", background=[("selected", NAVY_2)], foreground=[("selected", "white")])
+        s.configure("Treeview.Heading", font=(FONT[0], 10, "bold"), background=NAVY_2,
+                    foreground=T["heading_text"], relief="flat", padding=(6, 6))
+        s.map("Treeview.Heading", background=[("active", T["heading_active"])],
+              foreground=[("active", T["heading_text"])])
+        s.map("Treeview", background=[("selected", T["select_bg"])], foreground=[("selected", T["select_fg"])])
 
         # tabs: the selected one turns white with navy bold text
         s.configure("TNotebook", background=PAGE, borderwidth=0, tabmargins=(8, 6, 8, 0))
-        s.configure("TNotebook.Tab", padding=(16, 8), font=(FONT[0], 11), background="#d7dfea",
+        s.configure("TNotebook.Tab", padding=(16, 8), font=(FONT[0], 11), background=T["tab_bg"],
                     foreground=TEXT_2, borderwidth=0)
-        s.map("TNotebook.Tab", background=[("selected", CARD), ("active", "#e6ecf4")],
-              foreground=[("selected", NAVY)], font=[("selected", (FONT[0], 11, "bold"))],
+        s.map("TNotebook.Tab", background=[("selected", T["tab_selected"]), ("active", T["tab_active"])],
+              foreground=[("selected", T["tab_selected_fg"])], font=[("selected", (FONT[0], 11, "bold"))],
               expand=[("selected", (1, 2, 1, 0))])
 
         # buttons
-        s.configure("TButton", padding=(12, 6), background="#dfe6ef", foreground=TEXT, borderwidth=1)
-        s.map("TButton", background=[("active", "#cfd9e6")])
-        s.configure("Accent.TButton", foreground="white", background=ORANGE, font=(FONT[0], 11, "bold"))
-        s.map("Accent.TButton", background=[("active", ORANGE_DARK), ("disabled", "#f5b48f")],
-              foreground=[("disabled", "white")])
-        s.configure("Toolbutton", padding=(10, 5), background="#dfe6ef", foreground=TEXT)
-        s.map("Toolbutton", background=[("selected", NAVY_2), ("active", "#cfd9e6")],
-              foreground=[("selected", "white")])
-        s.configure("TCombobox", padding=4, arrowsize=16)
-        s.configure("TEntry", padding=4)
+        s.configure("TButton", padding=(12, 6), background=T["button_bg"], foreground=TEXT, borderwidth=1)
+        s.map("TButton", background=[("active", T["button_active"])])
+        s.configure("Accent.TButton", foreground="#ffffff", background=ORANGE, font=(FONT[0], 11, "bold"))
+        s.map("Accent.TButton", background=[("active", ORANGE_DARK), ("disabled", T["accent_disabled"])],
+              foreground=[("disabled", "#ffffff")])
+        s.configure("Header.TButton", padding=(10, 6), background=T["header"], foreground=T["header_status"],
+                    bordercolor=T["header_sub"])
+        s.map("Header.TButton", background=[("active", T["heading_active"])])
+        s.configure("Toolbutton", padding=(10, 5), background=T["button_bg"], foreground=TEXT)
+        s.map("Toolbutton", background=[("selected", T["toggle_on"]), ("active", T["button_active"])],
+              foreground=[("selected", "#ffffff")])
+
+        # text inputs and dropdowns (their popup lists are classic Tk widgets, styled via the option db)
+        s.configure("TCombobox", padding=4, arrowsize=16, fieldbackground=T["field_bg"], foreground=TEXT,
+                    background=T["button_bg"], arrowcolor=TEXT, selectbackground=T["select_bg"],
+                    selectforeground=T["select_fg"])
+        s.map("TCombobox", fieldbackground=[("readonly", T["field_bg"])], foreground=[("readonly", TEXT)],
+              selectbackground=[("readonly", T["field_bg"])], selectforeground=[("readonly", TEXT)])
+        s.configure("TEntry", padding=4, fieldbackground=T["field_bg"], foreground=TEXT, insertcolor=TEXT)
+        self.option_add("*TCombobox*Listbox.background", T["card"])
+        self.option_add("*TCombobox*Listbox.foreground", TEXT)
+        self.option_add("*TCombobox*Listbox.selectBackground", T["select_bg"])
+        self.option_add("*TCombobox*Listbox.selectForeground", T["select_fg"])
+        for bar in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
+            s.configure(bar, background=T["button_bg"], troughcolor=PAGE, arrowcolor=MUTED,
+                        bordercolor=PAGE, lightcolor=T["button_bg"], darkcolor=T["button_bg"])
+            # an inactive scrollbar (everything already fits) fades into the page instead of glowing
+            s.map(bar, background=[("disabled", PAGE), ("pressed", T["heading_active"]),
+                                   ("active", T["button_active"])],
+                  lightcolor=[("disabled", PAGE)], darkcolor=[("disabled", PAGE)],
+                  arrowcolor=[("disabled", T["border"])])
+        s.configure("TRadiobutton", background=PAGE, foreground=TEXT)
         self.configure(background=PAGE)
 
     def _build(self):
@@ -244,14 +269,17 @@ class App(tk.Tk):
         titles = tk.Frame(top, background=NAVY)
         titles.pack(side="left")
         tk.Label(titles, textvariable=self.league_name, font=(FONT[0], 19, "bold"), background=NAVY,
-                 foreground="white").pack(anchor="w")
+                 foreground=T["header_text"]).pack(anchor="w")
         tk.Label(titles, text="Fantasy Hoops", font=(FONT[0], 10), background=NAVY,
-                 foreground="#9fb3cf").pack(anchor="w")
+                 foreground=T["header_sub"]).pack(anchor="w")
         self.refresh_btn = ttk.Button(top, text="Refresh", style="Accent.TButton", command=self.refresh)
         self.refresh_btn.pack(side="right")
+        other = "light" if theme.NAME == "dark" else "dark"
+        ttk.Button(top, text=f"{other.title()} mode", style="Header.TButton",
+                   command=lambda: self._switch_theme(other)).pack(side="right", padx=(0, 10))
         self.status = tk.StringVar()
         tk.Label(top, textvariable=self.status, font=(FONT[0], 10), background=NAVY,
-                 foreground="#c7d3e3").pack(side="right", padx=14)
+                 foreground=T["header_status"]).pack(side="right", padx=14)
 
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(8, 10))
@@ -266,6 +294,13 @@ class App(tk.Tk):
         self.compare_tab = self._compare_tab()
         self.news_tab = self._news_tab()
         self._activity_tab()
+
+    def _switch_theme(self, name):
+        """Save the choice and reopen the window in the other theme (colours are set at startup)."""
+        import subprocess
+        theme.save(name)
+        subprocess.Popen([sys.executable, *sys.argv], cwd=str(stats.ROOT))
+        self.destroy()
 
     def _tab(self, title):
         f = ttk.Frame(self.tabs, padding=10)
@@ -291,7 +326,7 @@ class App(tk.Tk):
         ttk.Label(f, textvariable=self.my_title, font=(FONT[0], 12, "bold")).pack(anchor="w")
         ttk.Label(f, text="Alerts", style="Sub.TLabel").pack(anchor="w", pady=(8, 2))
         self.alerts = tk.Text(f, height=4, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=10, pady=8,
-                              background="white", font=FONT, cursor="arrow")
+                              background=CARD, foreground=TEXT, insertbackground=TEXT, font=FONT, cursor="arrow")
         self.alerts.pack(fill="x")
         for prio, (_, color) in PRIORITY.items():
             self.alerts.tag_configure(f"p{prio}", foreground=color, font=(FONT[0], 10, "bold"))
@@ -358,12 +393,12 @@ class App(tk.Tk):
         body = ttk.Frame(f)
         body.pack(fill="both", expand=True, pady=(10, 0))
         self.tl_text = tk.Text(body, width=54, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=12, pady=10,
-                               background="white", font=FONT, cursor="arrow")
+                               background=CARD, foreground=TEXT, insertbackground=TEXT, font=FONT, cursor="arrow")
         self.tl_text.pack(side="left", fill="y")
         self.tl_text.tag_configure("verdict", font=(FONT[0], 11, "bold"), spacing3=8)
         self.tl_text.tag_configure("a", foreground=SERIES[0], font=(FONT[0], 10, "bold"), spacing1=6)
         self.tl_text.tag_configure("b", foreground=SERIES[1], font=(FONT[0], 10, "bold"), spacing1=6)
-        self.tl_text.tag_configure("body", foreground="#333333", lmargin1=12, lmargin2=12)
+        self.tl_text.tag_configure("body", foreground=TEXT_2, lmargin1=12, lmargin2=12)
         self.tl_text.tag_configure("muted", foreground=MUTED, lmargin1=12, lmargin2=12)
         sugg = ttk.Frame(body, width=560)
         sugg.pack(side="left", fill="y", padx=(10, 0))
@@ -444,7 +479,7 @@ class App(tk.Tk):
         top.pack(fill="x")
         # A blank image makes the label size itself in pixels; text shows on top when there's no photo.
         self._blank = tk.PhotoImage(width=PHOTO_W, height=PHOTO_H)
-        self.photo_label = tk.Label(top, image=self._blank, compound="center", background="#e9ecf1",
+        self.photo_label = tk.Label(top, image=self._blank, compound="center", background=T["photo_bg"],
                                     text="", foreground=MUTED, font=FONT)
         self.photo_label.pack(side="left", padx=(0, 14))
         self._photo = None        # keep a reference or Tk drops the image
@@ -523,15 +558,15 @@ class App(tk.Tk):
         cards.pack(fill="x", pady=(0, 8))
         self.cmp_cards = []
         for i in range(2):
-            card = tk.Frame(cards, background="white")
+            card = tk.Frame(cards, background=CARD)
             card.pack(side="left", fill="x", expand=True, padx=(0, 10) if i == 0 else 0)
             tk.Frame(card, background=SERIES[i], width=6).pack(side="left", fill="y")
             blank = tk.PhotoImage(width=PHOTO_W // 2, height=PHOTO_H // 2)
-            photo = tk.Label(card, image=blank, background="#e9ecf1")
+            photo = tk.Label(card, image=blank, background=T["photo_bg"])
             photo.image = blank
             photo.pack(side="left", padx=8, pady=6)
             text = tk.StringVar(value=f"Player {i + 1}")
-            tk.Label(card, textvariable=text, background="white", foreground=INK_DARK, justify="left",
+            tk.Label(card, textvariable=text, background=CARD, foreground=INK_DARK, justify="left",
                      anchor="w", font=(FONT[0], 11)).pack(side="left", fill="x", expand=True)
             self.cmp_cards.append((photo, blank, text))
 
@@ -611,7 +646,7 @@ class App(tk.Tk):
                                 on_open=lambda v: self.show_player(v[0]))
         self.news_table.pack(fill="both", expand=True)
         self.news_table.tree.bind("<<TreeviewSelect>>", self._news_selected)
-        self.news_detail = tk.Text(f, height=9, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=12, pady=10, background="white",
+        self.news_detail = tk.Text(f, height=9, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=12, pady=10, background=CARD, foreground=TEXT,
                                    font=FONT, cursor="arrow")
         self.news_detail.pack(fill="x", pady=(8, 0))
         self.news_detail.tag_configure("head", font=(FONT[0], 11, "bold"))
@@ -622,7 +657,8 @@ class App(tk.Tk):
     def _activity_tab(self):
         f = self._tab("Activity")
         self.activity = Table(f, ("when", "team", "move", "player"),
-                              text_cols=("when", "team", "move", "player"), wide=("team", "player"),
+                              text_cols=("when", "team", "move", "player"), wide=("player",),
+                              widths={"when": 140, "team": 370, "move": 145},
                               on_open=lambda v: self.show_player(v[3]))
         self.activity.pack(fill="both", expand=True)
 
