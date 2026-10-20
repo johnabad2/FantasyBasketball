@@ -505,11 +505,12 @@ class App(tk.Tk):
                   font=(FONT[0], 10, "bold")).pack(anchor="w")
         ttk.Label(f, text="Counts only games on days you'd actually start him. 'make room' = who leaves your active "
                           "roster: an open roster spot if you have one, then your empty IR slot (INJ players always qualify; O "
-                          "players only once ESPN marks them IR-eligible, so check on ESPN), otherwise a drop (never "
-                          "someone better long-term than the streamer). No acquisition limit in your league.",
+                          "players only once ESPN marks them IR-eligible, so check on ESPN), otherwise a drop - only if "
+                          "you also come out ahead over the 'rest of season' (his remaining games vs the dropped "
+                          "player's, at their base value). No acquisition limit in your league.",
                   style="Sub.TLabel", wraplength=1800).pack(anchor="w")
         self.wk_streams = Table(f, ("add", "pos", "nba", "base", "games", "on light days", "gain (7 days)",
-                                    "make room"),
+                                    "rest of season", "make room"),
                                 text_cols=("add", "pos", "nba", "make room"), wide=("add", "make room"), height=8,
                                 on_open=lambda v: self.show_player(v[0]))
         self.wk_streams.pack(fill="both", expand=True, pady=(4, 0))
@@ -970,8 +971,8 @@ class App(tk.Tk):
             else:
                 room = drop
             rows.append((fa.player.name, fa.player.position, fa.player.proTeam, f"{fa.baseline:.1f}", s["games"],
-                         s["light_games"], f"+{s['gain']:.0f}", room))
-        self.wk_streams.set_rows(rows or [("No free agent adds points this week.", "", "", "", "", "", "", "")])
+                         s["light_games"], f"+{s['gain']:.0f}", f"{s['later']:+,.0f}", room))
+        self.wk_streams.set_rows(rows or [("No free agent adds points this week.", "", "", "", "", "", "", "", "")])
 
     def _fill_news(self):
         d = self.data

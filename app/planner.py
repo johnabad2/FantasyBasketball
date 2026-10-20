@@ -10,7 +10,7 @@ from fantasy import OUT_STATUSES, form_of
 from projections import nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
-LONG_TERM_SLACK = 0.0  # never drop someone better long-term than the streamer (fp/g)
+LONG_TERM_SLACK = 0.0  # never drop someone better per game than the streamer (fp/g)
 
 
 def lineup_slots(league):
@@ -116,6 +116,13 @@ def _cands(league, players, values, day, injuries, not_started=False):
     return out
 
 
+def games_after(league, player, first_day, injuries):
+    """Games he's expected to play from `first_day` to the end of the fantasy season
+    (his NBA schedule, skipping games before an injured player's expected return)."""
+    final = getattr(league, "finalScoringPeriod", None) or 174
+    return sum(1 for day in range(first_day, final + 1) if _available(player, _game(league, player, day), injuries))
+
+
 def _day_date(league, day):
     today = getattr(league, "current_week", 1) or 1
     return date.today() + timedelta(days=day - today)
@@ -171,19 +178,26 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
             gain = sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base
             if gain > 0.5:
                 out.append({"fa": f, "open_spot": True, "ir": None, "ir_certain": False, "drop": None,
+                            "later": f.baseline * games_after(league, fa, base_week[-1]["day"] + 1, injuries),
                             "drop_gain": None, "gain": gain, "games": len(games),
                             "light_games": sum(1 for d in games if d in light_days)})
             continue
         ir = ir_moves[0] if ir_moves else None  # (player, back, certain): nobody leaves your team
         ir_gain = (sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base) if ir else None
         best_drop = None
+        after = base_week[-1]["day"] + 1  # first day after the planning window
+        fa_later = f.baseline * games_after(league, fa, after, injuries)
         for drop in drops:
             if values[drop.playerId] > f.baseline + LONG_TERM_SLACK:
                 continue  # dropping is permanent: never lose a better player for a one-week stream
             trial = [p for p in roster if p is not drop] + [fa]
             gain = sum(d["points"] for d in week(league, trial, vals, injuries, days)) - base
+            # after this week: his points vs the dropped player's, over all their remaining games
+            later = fa_later - values[drop.playerId] * games_after(league, drop, after, injuries)
+            if gain + later <= 0:
+                continue  # wins this week but loses over the season: the dropped player is better overall
             if best_drop is None or gain > best_drop[0] + 0.05:
-                best_drop = (gain, drop)
+                best_drop = (gain, drop, later)
         # a sure IR move beats any drop; an uncertain one is shown together with the drop fallback
         gain = ir_gain if ir and (ir[2] or not best_drop) else (best_drop[0] if best_drop else None)
         if ir and not ir[2] and best_drop:
@@ -191,6 +205,7 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
         if gain is not None and gain > 0.5:
             out.append({"fa": f, "open_spot": False, "ir": ir[0] if ir else None, "ir_certain": bool(ir and ir[2]),
                         "drop": best_drop[1] if best_drop else None,
+                        "later": best_drop[2] if best_drop else fa_later,
                         "drop_gain": best_drop[0] if best_drop else None, "gain": gain, "games": len(games),
                         "light_games": sum(1 for d in games if d in light_days)})
     return sorted(out, key=lambda x: -x["gain"])[:top]

@@ -41,8 +41,8 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   slots you'll fill each day; and **streamers**: free agents ranked by how many points they'd add
   this week, counting only games on days you'd actually start them, and who to make room with
   (an open roster spot if you have one, then your empty IR slot: INJ players always qualify, O
-  players only once ESPN marks them IR-eligible; otherwise a drop, never someone better long-term
-  than the streamer)
+  players only once ESPN marks them IR-eligible; otherwise a drop, only if you also come out ahead over
+  the rest of the season: his remaining games vs the dropped player's, at their base value)
 - **News**: ESPN's injury report for your team, every rostered player or every injured NBA
   player, with expected return dates; click a player for the full note and latest news
 - **Free Agents**: the top 100 available players; green ones beat your weakest player

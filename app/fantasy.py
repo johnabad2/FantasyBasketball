@@ -317,7 +317,7 @@ def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
         how = f"move {s['ir'].name} (INJ) to IR"
     else:
         drop = (f"drop {s['drop'].name} (base {form_of(s['drop'], league.year).baseline:.1f} vs his "
-                f"{s['fa'].baseline:.1f})") if s["drop"] else None
+                f"{s['fa'].baseline:.1f}; {s['later']:+,.0f} pts over the rest of the season)") if s["drop"] else None
         if s["ir"]:
             how = f"move {s['ir'].name} to IR if ESPN lists him IR-eligible" + (f"; otherwise {drop}" if drop else
                                                                                  "; otherwise skip it")
