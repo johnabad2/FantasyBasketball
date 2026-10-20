@@ -106,18 +106,32 @@ class Table(ttk.Frame):
         for i, r in enumerate(rows):
             self.tree.insert("", "end", iid=iids[i] if iids else None, values=r, tags=tags[i] if tags else ())
 
+    @staticmethod
+    def _number(v):
+        """The number in a cell ('#10' -> 10, '40,505' -> 40505, '+3.2' -> 3.2, '52%' -> 52), else None."""
+        s = str(v).strip().replace(",", "").replace(" *", "").lstrip("#").rstrip("%").replace("+", "")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
     def sort(self, col):
-        def key(v):
-            try:
-                return (0, float(str(v).rstrip("%").replace("+", "").replace(" *", "")))
-            except ValueError:
-                return (1, str(v).lower())
-        rev = self._reverse.get(col, True)  # first click: biggest numbers on top
-        items = sorted(((self.tree.set(k, col), k) for k in self.tree.get_children("")),
-                       key=lambda x: key(x[0]), reverse=rev)
+        cells = [(self.tree.set(k, col), k) for k in self.tree.get_children("")]
+        numbers = [(self._number(v), k) for v, k in cells if self._number(v) is not None]
+        words = [(str(v).lower(), k) for v, k in cells if self._number(v) is None]
+        # First click: ranks (#1, #2...) and text ascending, other numbers biggest first.
+        rank_like = col == "#" or any(str(v).startswith("#") for v, _ in cells)
+        default = not numbers or rank_like
+        ascending = self._reverse.get(col, default)
+        numbers.sort(key=lambda x: x[0], reverse=not ascending)
+        if numbers:
+            words.sort(key=lambda x: x[0])  # '-', 'loading...' etc. stay at the bottom
+            items = numbers + words
+        else:
+            items = sorted(words, key=lambda x: x[0], reverse=not ascending)
         for i, (_, k) in enumerate(items):
             self.tree.move(k, "", i)
-        self._reverse[col] = not rev
+        self._reverse[col] = not ascending
 
 
 class App(tk.Tk):
