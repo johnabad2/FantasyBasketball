@@ -15,6 +15,7 @@ import gamelog
 import stats
 from chart import GameChart
 from compare import SERIES, ParallelChart, axes_for, profile
+import trade
 from stats import BOX, SPLIT_LABELS, SPLITS, box, fp_per_game, games, owner_names, split_of
 
 FONT = ("Segoe UI", 10)
@@ -98,10 +99,10 @@ class Table(ttk.Frame):
         if sel:
             callback(self.tree.item(sel[0], "values"))
 
-    def set_rows(self, rows, tags=None):
+    def set_rows(self, rows, tags=None, iids=None):
         self.tree.delete(*self.tree.get_children())
         for i, r in enumerate(rows):
-            self.tree.insert("", "end", values=r, tags=tags[i] if tags else ())
+            self.tree.insert("", "end", iid=iids[i] if iids else None, values=r, tags=tags[i] if tags else ())
 
     def sort(self, col):
         def key(v):
@@ -172,6 +173,7 @@ class App(tk.Tk):
         self._my_team_tab()
         self._free_agents_tab()
         self._trades_tab()
+        self._trade_lab_tab()
         self.league_tab = self._league_tab()
         self.player_tab = self._player_tab()
         self.compare_tab = self._compare_tab()
@@ -210,6 +212,56 @@ class App(tk.Tk):
                                text_cols=("player", "status", "slot", "nba", "pos"), wide=("player",),
                                on_open=lambda v: self.show_player(v[0]))
         self.my_roster.pack(fill="both", expand=True)
+
+    def _trade_lab_tab(self):
+        f = self._tab("Trade Lab")
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Label(bar, text="Team").pack(side="left")
+        self.tl_a = ttk.Combobox(bar, state="readonly", width=30)
+        self.tl_a.pack(side="left", padx=6)
+        ttk.Label(bar, text="trades with", font=(FONT[0], 10, "bold")).pack(side="left", padx=8)
+        self.tl_b = ttk.Combobox(bar, state="readonly", width=30)
+        self.tl_b.pack(side="left", padx=6)
+        for box in (self.tl_a, self.tl_b):
+            box.bind("<<ComboboxSelected>>", lambda e: self._trade_teams_changed())
+        ttk.Button(bar, text="Clear picks", command=self._trade_clear).pack(side="left", padx=12)
+        ttk.Label(bar, text="Click players to tick them. base = per-game value, L15 = last 15 days.",
+                  style="Sub.TLabel").pack(side="right")
+
+        lists = ttk.Frame(f)
+        lists.pack(fill="x")
+        self.tl_send, self.tl_get = set(), set()
+        self.tl_tables, self.tl_heads = [], []
+        tick = "✔"
+        cols = (tick, "player", "pos", "nba", "status", "base", "L15")
+        for i in range(2):
+            col = ttk.Frame(lists)
+            col.pack(side="left", fill="both", expand=True, padx=(0, 10) if i == 0 else 0)
+            head = tk.StringVar()
+            row = tk.Frame(col, background="#f6f7f9")
+            row.pack(fill="x")
+            tk.Frame(row, background=SERIES[i], width=6, height=20).pack(side="left", padx=(0, 6))
+            ttk.Label(row, textvariable=head, font=(FONT[0], 11, "bold")).pack(side="left")
+            table = Table(col, cols, text_cols=(tick, "player", "pos", "nba", "status"), wide=("player",),
+                          height=7, widths={tick: 40})
+            table.pack(fill="both", expand=True, pady=(4, 0))
+            table.tree.bind("<ButtonRelease-1>", lambda e, i=i: self._trade_toggle(e, i))
+            self.tl_tables.append(table)
+            self.tl_heads.append(head)
+
+        body = ttk.Frame(f)
+        body.pack(fill="both", expand=True, pady=(10, 0))
+        self.tl_text = tk.Text(body, width=64, wrap="word", relief="flat", padx=12, pady=10,
+                               background="white", font=FONT, cursor="arrow")
+        self.tl_text.pack(side="left", fill="y")
+        self.tl_text.tag_configure("verdict", font=(FONT[0], 11, "bold"), spacing3=8)
+        self.tl_text.tag_configure("a", foreground=SERIES[0], font=(FONT[0], 10, "bold"), spacing1=6)
+        self.tl_text.tag_configure("b", foreground=SERIES[1], font=(FONT[0], 10, "bold"), spacing1=6)
+        self.tl_text.tag_configure("body", foreground="#333333", lmargin1=12, lmargin2=12)
+        self.tl_text.tag_configure("muted", foreground="#777777", lmargin1=12, lmargin2=12)
+        self.tl_chart = trade.StrengthChart(body, height=320)
+        self.tl_chart.pack(side="left", fill="both", expand=True, padx=(10, 0))
 
     def _league_tab(self):
         f = self._tab("League")
@@ -473,6 +525,7 @@ class App(tk.Tk):
         self._fill_my_team()
         self._fill_free_agents()
         self._fill_trades()
+        self._fill_trade_lab()
         names = [t.team_name for t in sorted(league.teams, key=lambda t: -t.points_for)]
         current = self.team_pick.get()
         self.team_pick["values"] = names
@@ -680,6 +733,98 @@ class App(tk.Tk):
             stat = self.breakdown.tree.item(sel[0], "values")[0]
             if stat in gamelog.CHART_STATS:
                 self.chart_stat.set(stat)
+
+    # ------------------------------------------------------------ trade lab
+
+    def _team_by_name(self, name):
+        return next((t for t in self.data["league"].teams if t.team_name == name), None)
+
+    def _fill_trade_lab(self):
+        league = self.data["league"]
+        names = [t.team_name for t in league.teams]
+        a, b = self.tl_a.get(), self.tl_b.get()
+        self.tl_a["values"] = names
+        self.tl_b["values"] = names
+        if a not in names:
+            self.tl_a.set(self.data["me"].team_name)
+        if b not in names or b == self.tl_a.get():
+            self.tl_b.set(next(n for n in names if n != self.tl_a.get()))
+        self._trade_render()
+
+    def _trade_teams_changed(self):
+        if self.tl_a.get() == self.tl_b.get():
+            names = list(self.tl_b["values"])
+            self.tl_b.set(next(n for n in names if n != self.tl_a.get()))
+        self._trade_clear()
+
+    def _trade_clear(self):
+        self.tl_send.clear()
+        self.tl_get.clear()
+        self._trade_render()
+
+    def _trade_toggle(self, event, side):
+        tree = self.tl_tables[side].tree
+        iid = tree.identify_row(event.y)
+        if not iid:
+            return
+        picks = self.tl_send if side == 0 else self.tl_get
+        pid = int(iid)
+        picks.symmetric_difference_update({pid})  # tick / untick
+        self._trade_render()
+
+    def _trade_render(self):
+        if not self.data:
+            return
+        league, year = self.data["league"], self.data["league"].year
+        team_a, team_b = self._team_by_name(self.tl_a.get()), self._team_by_name(self.tl_b.get())
+        if not team_a or not team_b:
+            return
+        mine = team_a.team_id == self.data["me"].team_id
+        self.tl_heads[0].set(f"{team_a.team_name} sends" + ("  (you)" if mine else ""))
+        self.tl_heads[1].set(f"{team_b.team_name} sends")
+        for side, (team, picks) in enumerate(((team_a, self.tl_send), (team_b, self.tl_get))):
+            forms = sorted((fantasy.form_of(p, year) for p in team.roster), key=lambda f: -f.worth)
+            rows, tags, iids = [], [], []
+            for f in forms:
+                p = f.player
+                ticked = p.playerId in picks
+                rows.append(("\u2714" if ticked else "", p.name, p.position, p.proTeam, status_text(p),
+                             f"{f.baseline:.1f}", f"{f.recent:.1f}"))
+                tags.append(("me",) if ticked else (status_tag(p),))
+                iids.append(str(p.playerId))
+            self.tl_tables[side].set_rows(rows, tags, iids)
+
+        r = trade.simulate(league, team_a, team_b, self.tl_send, self.tl_get)
+        self.tl_chart.show(r)
+        txt = self.tl_text
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
+        txt.insert("end", trade.verdict(r) + "\n", "verdict")
+        gl = r["games_left"]
+        for key, tag in (("a", "a"), ("b", "b")):
+            s = r[key]
+            gives = r["sent"] if key == "a" else r["got"]
+            gets = r["got"] if key == "a" else r["sent"]
+            txt.insert("end", f"{s['team'].team_name}\n", tag)
+            txt.insert("end", f"Lineup {s['before']:.1f} -> {s['after']:.1f} fp/g ({s['delta']:+.1f})   "
+                              f"rank #{s['rank_before']} -> #{s['rank_after']}\n", "body")
+            txt.insert("end", f"About {s['delta'] * gl:+.0f} season points over the ~{gl} games left\n", "body")
+            if gives or gets:
+                txt.insert("end", "Gives: " + (", ".join(f"{f.player.name} ({f.baseline:.1f})" for f in gives) or "nothing")
+                           + "\nGets: " + (", ".join(f"{f.player.name} ({f.baseline:.1f})" for f in gets) or "nothing")
+                           + "\n", "body")
+            if s["size_after"] != s["size_before"]:
+                note = f"Roster {s['size_before']} -> {s['size_after']} players"
+                if s["drop"]:
+                    note += f": would need to drop someone (lowest value: {s['drop']})"
+                txt.insert("end", note + "\n", "muted")
+            changed = [f"{pos} {s['pos_before'][pos]}->{s['pos_after'][pos]}" for pos in trade.POSITIONS
+                       if s["pos_before"][pos] != s["pos_after"][pos]]
+            if changed:
+                txt.insert("end", "Positions: " + ", ".join(changed) + "\n", "muted")
+        txt.insert("end", "\nLineup = the best players a team can start each day (10 slots). Bench players "
+                          "mostly don't score in a points league, so depth only helps through injuries.", "muted")
+        txt.configure(state="disabled")
 
     # ------------------------------------------------------------ compare
 

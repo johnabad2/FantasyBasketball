@@ -21,6 +21,10 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Ta
 - **Standings**, **My Team** (alerts + roster form)
 - **Free Agents**: the top 100 available players; green ones beat your weakest player
 - **Trades**: up to 3 trade ideas per team, best gain first
+- **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
+  team's lineup strength (per-game value of its best 10 starters) before and after, the change in
+  league rank, roughly how many season points it's worth over the games left, roster-size and
+  position changes, a verdict on whether they'd accept, and where every team stands afterwards
 - **League**: any team's roster, any stat window
 - **Player**: search any NBA player, with their ESPN photo (cached in `data\headshots`). Nicknames
   work too ("kd", "slim reaper", "the joker", "sga"); add your own in `config\nicknames.json`.
