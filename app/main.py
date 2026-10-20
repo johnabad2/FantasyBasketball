@@ -12,6 +12,7 @@ from tkinter import ttk
 
 import fantasy
 import gamelog
+import lineup
 import stats
 from chart import GameChart
 from compare import SERIES, ParallelChart, axes_for, profile
@@ -207,10 +208,14 @@ class App(tk.Tk):
                                   spacing3=6)
         ttk.Label(f, text="Roster  (base = season avg, blended with projection early on;"
                           " L15 = last 15 days)", style="Sub.TLabel").pack(anchor="w", pady=(10, 2))
-        self.my_roster = Table(f, ("player", "pos", "slot", "nba", "status", "gp", "base", "L15", "trend",
-                                   "fp tot"),
-                               text_cols=("player", "status", "slot", "nba", "pos"), wide=("player",),
+        self.my_roster = Table(f, ("player", "pos", "your lineup", "today", "NBA role", "nba", "status", "gp",
+                                   "base", "L15", "trend", "fp tot"),
+                               text_cols=("player", "pos", "your lineup", "today", "NBA role", "nba", "status"),
+                               wide=("player",), widths={"your lineup": 125, "today": 175, "NBA role": 215},
                                on_open=lambda v: self.show_player(v[0]))
+        ttk.Label(f, text="your lineup = your fantasy slot today  ·  today = their NBA game (your time)  ·  "
+                          "NBA role = how many of their last games they started (pre = preseason)",
+                  style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
         self.my_roster.pack(fill="both", expand=True)
 
     def _trade_lab_tab(self):
@@ -574,17 +579,31 @@ class App(tk.Tk):
 
         min_games = d["cfg"]["thresholds"]["min_games"]
         forms = sorted((fantasy.form_of(p, year) for p in me.roster), key=lambda f: -f.worth)
+        games = lineup.todays_games(d["league"])
+        roles = getattr(self, "_roles", {})
         rows, tags = [], []
         for f in forms:
             p = f.player
             trusted = f.games >= min_games
-            rows.append((p.name, p.position, p.lineupSlot, p.proTeam, status_text(p), f.games,
-                         f"{f.baseline:.1f}", f"{f.recent:.1f}", f"{f.trend:+.0%}" if trusted else "-",
+            slot = p.lineupSlot
+            in_lineup = "IR" if slot == "IR" else "bench" if slot == "BE" else f"starting ({slot})"
+            rows.append((p.name, p.position, in_lineup, lineup.game_today(d["league"], p, games) or "no game",
+                         roles.get(p.playerId, "-" if self.demo else "loading..."), p.proTeam, status_text(p),
+                         f.games, f"{f.baseline:.1f}", f"{f.recent:.1f}", f"{f.trend:+.0%}" if trusted else "-",
                          f"{split_of(p, year, 'total').get('applied_total', 0):.0f}"))
             hot = trusted and f.trend >= d["cfg"]["thresholds"]["trend_pct"]
             cold = trusted and f.trend <= -d["cfg"]["thresholds"]["trend_pct"]
             tags.append((status_tag(p) or ("hot" if hot else "cold" if cold else ""),))
         self.my_roster.set_rows(rows, tags)
+        # NBA roles need box scores: fetch in the background (cached after the first time), then redraw.
+        missing = [p.playerId for p in me.roster if p.playerId not in roles]
+        if missing and not self.demo:
+            self.run(lambda: lineup.nba_roles(missing, year), self._roles_loaded)
+
+    def _roles_loaded(self, found):
+        self._roles = {**getattr(self, "_roles", {}), **found}
+        if self.data:
+            self._fill_my_team()
 
     def _fill_free_agents(self):
         d = self.data

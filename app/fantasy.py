@@ -211,6 +211,32 @@ def trade_alerts(mine, others, t):
     ]
 
 
+def lineup_alerts(league, mine):
+    """Daily lineup check: a bench player who plays today should replace a starter who doesn't,
+    as long as he's eligible for that starter's slot."""
+    import lineup
+    games = lineup.todays_games(league)
+    if not games:
+        return []
+    playing = lambda f: bool(lineup.game_today(league, f.player, games))
+    idle = sorted((f for f in mine if f.player.lineupSlot not in BENCH_SLOTS and not playing(f)),
+                  key=lambda f: f.worth)
+    ready = sorted((f for f in mine if f.player.lineupSlot == "BE" and playing(f) and f.healthy),
+                   key=lambda f: -f.worth)
+    day = getattr(league, "current_week", "")
+    alerts = []
+    for f in ready:
+        slot_of = next((s for s in idle if s.player.lineupSlot in (f.player.eligibleSlots or [])), None)
+        if not slot_of:
+            continue
+        idle.remove(slot_of)
+        alerts.append(Alert(f"lineup:{day}:{f.player.playerId}", 1,
+                            f"Start {f.player.name} today instead of {slot_of.player.name}",
+                            f"{f.player.name} plays today ({lineup.game_today(league, f.player, games)}) but is on "
+                            f"your bench; {slot_of.player.name} in your {slot_of.player.lineupSlot} slot has no game."))
+    return alerts
+
+
 def analyze(league, my_team, fa_count=75):
     """Form for your roster, every other roster, and the free-agent pool."""
     year = league.year
@@ -224,7 +250,7 @@ def analyze(league, my_team, fa_count=75):
 
 def build_alerts(league, my_team, thresholds, analysis=None):
     mine, others, fas = analysis or analyze(league, my_team)
-    alerts = (injury_alerts(mine) + waiver_alerts(mine, fas, thresholds)
+    alerts = (injury_alerts(mine) + lineup_alerts(league, mine) + waiver_alerts(mine, fas, thresholds)
               + trade_alerts(mine, others, thresholds) + form_alerts(mine, thresholds))
     return sorted(alerts, key=lambda a: a.priority)
 

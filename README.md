@@ -31,7 +31,11 @@ its config and data from its own location.
 
 Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`). Tabs:
 
-- **Standings**, **My Team** (alerts + roster form)
+- **Standings**, **My Team** (alerts + roster form). The roster shows whether each player is
+  **in your lineup or on your bench**, **their NBA game today** (your local time), and their
+  **NBA role**: how many of their last 5 games they started, from ESPN box scores (preseason
+  until the regular season has games). If a bench player plays today and a starter doesn't,
+  you get a "Start X instead of Y" alert
 - **Free Agents**: the top 100 available players; green ones beat your weakest player
 - **Trades**: up to 3 trade ideas per team, best gain first
 - **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
@@ -98,6 +102,7 @@ The alerts:
 | Alert | Fires when |
 |---|---|
 | Bench X (do now) | A starter is OUT, on IR, or suspended |
+| Start X instead of Y (do now) | A bench player has a game today, a starter in a slot he can fill doesn't |
 | Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Sell high | Your player is 25%+ above their base right now |
