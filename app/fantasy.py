@@ -33,8 +33,7 @@ OUT_STATUSES = {"OUT", "INJURY_RESERVE", "SUSPENSION"}
 SHAKY_STATUSES = {"DAY_TO_DAY", "QUESTIONABLE", "DOUBTFUL"}
 BENCH_SLOTS = {"BE", "IR"}
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
-MAX_AT_POSITION = 3  # more players than this whose main position is the same = too many
-MIN_COVER = 2        # fewer healthy players than this who can play a position = too thin
+MIN_AT_POSITION, MAX_AT_POSITION = 2, 3  # aim for 2-3 players at each main position
 
 DEFAULT_THRESHOLDS = {
     "trend_pct": 0.25,       # recent form this far above/below baseline counts as hot/slumping
@@ -113,26 +112,23 @@ def form_of(player, year):
 # ---------------------------------------------------------------- position balance
 
 def balance_problems(players):
-    """{(kind, pos): [names]} for an unbalanced roster. 'many' = more than MAX_AT_POSITION players
-    whose main position is pos (IR included: they come back); 'thin' = fewer than MIN_COVER healthy
-    players off IR who can play pos."""
+    """{(kind, pos): [names]} by main position. 'many' = more than MAX_AT_POSITION (IR included:
+    they come back); 'few' = fewer than MIN_AT_POSITION off IR (an IR'd player can't fill in)."""
     problems = {}
     for pos in POSITIONS:
         main = [p.name for p in players if p.position == pos]
         if len(main) > MAX_AT_POSITION:
             problems[("many", pos)] = main
-        cover = [p.name for p in players if pos in (p.eligibleSlots or [])
-                 and p.lineupSlot != "IR" and (p.injuryStatus or "ACTIVE") not in OUT_STATUSES]
-        if len(cover) < MIN_COVER:
-            problems[("thin", pos)] = cover
+        active = [p.name for p in players if p.position == pos and p.lineupSlot != "IR"]
+        if len(active) < MIN_AT_POSITION:
+            problems[("few", pos)] = active
     return problems
 
 
 def describe_problem(kind, pos, names):
     if kind == "many":
         return f"{len(names)} {pos}s ({', '.join(names)})"
-    return f"only {len(names)} healthy player{'s' * (len(names) != 1)} who can play {pos}" + \
-        (f" ({', '.join(names)})" if names else "")
+    return f"only {len(names)} {pos}" + (f" ({', '.join(names)})" if names else "")
 
 
 def unbalances(players, add=(), drop=()):
@@ -149,11 +145,10 @@ def balance_alerts(my_team):
     alerts = []
     for (kind, pos), names in balance_problems(my_team.roster).items():
         if kind == "many":
-            detail = f"{', '.join(names)}. Consider trading one for a position you're short on."
+            detail = f"{', '.join(names)}. Consider swapping one for a position you're short on."
         else:
             detail = ((", ".join(names) + ". ") if names else "") + \
-                f"If {'he sits' if len(names) == 1 else 'they sit'}, your {pos} slot can go empty. " \
-                "Consider adding one before you need him."
+                f"You're aiming for {MIN_AT_POSITION}-{MAX_AT_POSITION} at every position: consider adding a {pos}."
         detail = detail.replace(".. ", ". ")  # names like "Scotty Pippen Jr." already end in a dot
         alerts.append(Alert(f"balance:{kind}:{pos}:{','.join(sorted(names))}", 2,
                             f"Roster balance: {describe_problem(kind, pos, names).split(' (')[0]}", detail))
