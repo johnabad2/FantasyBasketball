@@ -1268,8 +1268,8 @@ class App(tk.Tk):
                        if s["pos_before"][pos] != s["pos_after"][pos]]
             if changed:
                 txt.insert("end", "Positions: " + ", ".join(changed) + "\n", "muted")
-        txt.insert("end", "\nLineup = the best players a team can start each day (10 slots). Bench players "
-                          "mostly don't score in a points league, so depth only helps through injuries.", "muted")
+        txt.insert("end", "\nLineup = the best 10 players a team can start. Bench players still score on days "
+                          "a starter has no game, so depth adds points across a season too.", "muted")
         txt.configure(state="disabled")
 
     def _trade_suggestions(self, league, team_a, team_b):
