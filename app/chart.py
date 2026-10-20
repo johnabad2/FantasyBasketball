@@ -6,7 +6,7 @@ import tkinter as tk
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_2 = "#52514e"
-MUTED = "#898781"
+MUTED = "#66655f"
 GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 ABOVE = "#2a78d6"  # blue/red diverging pair: validated for color-vision deficiency

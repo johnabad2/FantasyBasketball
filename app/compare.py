@@ -10,7 +10,7 @@ from stats import fp_per_game, season_or_projection, split_of
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_2 = "#52514e"
-MUTED = "#898781"
+MUTED = "#66655f"
 AXIS = "#c3c2b7"
 HOVER_WASH = "#eef3fb"
 SERIES = ["#2a78d6", "#eb6834"]  # categorical slots 1 & 2 (blue, orange), in fixed order

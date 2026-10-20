@@ -10,7 +10,7 @@ from fantasy import form_of
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_2 = "#52514e"
-MUTED = "#898781"
+MUTED = "#66655f"
 GRID = "#e1e0d9"
 OTHER = "#c3c2b7"   # uninvolved teams recede
 SERIES = ["#2a78d6", "#eb6834"]  # team A blue, team B orange (categorical slots 1, 2)

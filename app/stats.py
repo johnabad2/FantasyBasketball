@@ -16,7 +16,7 @@ NICKNAMES = ROOT / "config" / "nicknames.json"
 BOX = ["PTS", "REB", "AST", "STL", "BLK", "TO", "FG", "3P", "FT", "MPG"]
 # shooting columns show volume and efficiency together: made-attempted per game, then the %
 SHOOTING = {"FG": ("FGM", "FGA"), "3P": ("3PM", "3PA"), "FT": ("FTM", "FTA")}
-SHOOTING_WIDTHS = {"FG": 135, "3P": 120, "FT": 120}  # pixel widths for these columns in the window
+SHOOTING_WIDTHS = {"FG": 135, "3P": 130, "FT": 120}  # pixel widths for these columns in the window
 SPLITS = ["total", "last_7", "last_15", "last_30", "projected"]
 SPLIT_LABELS = {"total": "season", "last_7": "last 7 days", "last_15": "last 15 days",
                 "last_30": "last 30 days", "projected": "projected"}

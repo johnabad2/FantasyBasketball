@@ -23,14 +23,27 @@ from compare import SERIES, ParallelChart, axes_for, profile
 import trade
 from stats import BOX, SHOOTING_WIDTHS, SPLIT_LABELS, SPLITS, box, fp_per_game, games, owner_names, split_of
 
-FONT = ("Segoe UI", 10)
-ACCENT = "#1d6fd8"
-INK_DARK = "#0b0b0b"
-ME_BG = "#e3eefc"
+FONT = ("Segoe UI", 11)
+COLUMN_SCALE = 1.1  # column widths were tuned at 10pt; scale them with the 11pt font
+# palette: navy chrome, basketball-orange actions, high-contrast text on light panels
+NAVY = "#14213d"        # header bar
+NAVY_2 = "#1f3a5f"      # table headings, selected rows, active toggles
+ORANGE = "#f26b1d"      # primary buttons and the logo
+ORANGE_DARK = "#d4560b"
+PAGE = "#e9eef5"        # window background
+CARD = "#ffffff"        # tables and text panels
+BORDER = "#cfd8e3"
+TEXT = "#111827"
+TEXT_2 = "#374151"      # secondary text (alert details, notes)
+MUTED = "#4b5563"       # small print: dark enough to read comfortably
+STRIPE = "#f3f6fa"      # every other table row
+ACCENT = NAVY_2
+INK_DARK = TEXT
+ME_BG = "#ffe9d9"       # your team / ticked rows: light orange
 RED = "#c62828"
 AMBER = "#b26a00"
 GREEN = "#2e7d32"
-PRIORITY = {1: ("DO NOW", RED), 2: ("CONSIDER", AMBER), 3: ("FYI", "#555555")}
+PRIORITY = {1: ("DO NOW", RED), 2: ("CONSIDER", AMBER), 3: ("FYI", MUTED)}
 AUTO_REFRESH_MIN = 15
 PHOTO_W, PHOTO_H = 300, 218  # ESPN headshots are 600x436; shown at half size
 HEADSHOTS = stats.DATA / "headshots"
@@ -84,8 +97,9 @@ class Table(ttk.Frame):
         for c in columns:
             self.tree.heading(c, text=c, command=lambda c=c: self.sort(c))
             # short codes like pos/nba/slot don't need a full text-column width
-            base = 200 if c in wide else 64 if len(c) <= 4 else 110 if c in text_cols else 58
-            width = (widths or {}).get(c) or max(base, 10 * len(c) + 24)
+            base = 190 if c in wide else 54 if len(c) <= 4 else 110 if c in text_cols else 50
+            width = (widths or {}).get(c) or max(base, 10 * len(c) + 26)
+            width = round(width * COLUMN_SCALE)
             self.tree.column(c, width=width, minwidth=40, anchor="w" if c in text_cols else "e",
                              stretch=c in wide)
         bar = ttk.Scrollbar(self, orient="vertical", command=self.tree.yview)
@@ -96,6 +110,7 @@ class Table(ttk.Frame):
         xbar.grid(row=1, column=0, sticky="ew")
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
+        self.tree.tag_configure("odd", background=STRIPE)
         self.tree.tag_configure("me", background=ME_BG)
         self.tree.tag_configure("out", foreground=RED)
         self.tree.tag_configure("shaky", foreground=AMBER)
@@ -114,6 +129,16 @@ class Table(ttk.Frame):
         self.tree.delete(*self.tree.get_children())
         for i, r in enumerate(rows):
             self.tree.insert("", "end", iid=iids[i] if iids else None, values=r, tags=tags[i] if tags else ())
+        self._stripe()
+
+    def _stripe(self):
+        """Shade every other row so the eye can follow a row across; rows with their own
+        background (your team, ticked players) keep it."""
+        for i, k in enumerate(self.tree.get_children("")):
+            tags = [t for t in self.tree.item(k, "tags") if t != "odd"]
+            if i % 2 and "me" not in tags:
+                tags.append("odd")
+            self.tree.item(k, tags=tags)
 
     @staticmethod
     def _number(v):
@@ -143,6 +168,7 @@ class Table(ttk.Frame):
         for i, (_, k) in enumerate(items):
             self.tree.move(k, "", i)
         self._reverse[col] = not ascending
+        self._stripe()
 
 
 class App(tk.Tk):
@@ -169,33 +195,66 @@ class App(tk.Tk):
         s = ttk.Style(self)
         s.theme_use("clam")
         self.option_add("*Font", FONT)
-        s.configure(".", font=FONT, background="#f6f7f9")
-        s.configure("Treeview", rowheight=30, font=FONT, background="white", fieldbackground="white")
-        s.configure("Treeview.Heading", font=(FONT[0], 10, "bold"), background="#e9ecf1")
-        s.map("Treeview", background=[("selected", ACCENT)], foreground=[("selected", "white")])
-        s.configure("TNotebook.Tab", padding=(14, 6), font=(FONT[0], 10))
+        s.configure(".", font=FONT, background=PAGE, foreground=TEXT, bordercolor=BORDER,
+                    lightcolor=BORDER, darkcolor=BORDER, troughcolor=PAGE)
+        s.configure("TFrame", background=PAGE)
+        s.configure("TLabel", background=PAGE, foreground=TEXT)
+        s.configure("Sub.TLabel", foreground=MUTED, font=(FONT[0], 10))
 
-        s.configure("Sub.TLabel", foreground="#666666")
+        # tables: white, taller rows, navy headings with white text
+        s.configure("Treeview", rowheight=32, font=FONT, background=CARD, fieldbackground=CARD,
+                    foreground=TEXT, bordercolor=BORDER, borderwidth=1)
+        s.configure("Treeview.Heading", font=(FONT[0], 10, "bold"), background=NAVY_2, foreground="white",
+                    relief="flat", padding=(6, 6))
+        s.map("Treeview.Heading", background=[("active", "#2b4c7e")], foreground=[("active", "white")])
+        s.map("Treeview", background=[("selected", NAVY_2)], foreground=[("selected", "white")])
 
-        s.configure("Toolbutton", padding=(8, 3), background="#e9ecf1")
-        s.map("Toolbutton", background=[("selected", ACCENT), ("active", "#dbe4f3")],
+        # tabs: the selected one turns white with navy bold text
+        s.configure("TNotebook", background=PAGE, borderwidth=0, tabmargins=(8, 6, 8, 0))
+        s.configure("TNotebook.Tab", padding=(16, 8), font=(FONT[0], 11), background="#d7dfea",
+                    foreground=TEXT_2, borderwidth=0)
+        s.map("TNotebook.Tab", background=[("selected", CARD), ("active", "#e6ecf4")],
+              foreground=[("selected", NAVY)], font=[("selected", (FONT[0], 11, "bold"))],
+              expand=[("selected", (1, 2, 1, 0))])
+
+        # buttons
+        s.configure("TButton", padding=(12, 6), background="#dfe6ef", foreground=TEXT, borderwidth=1)
+        s.map("TButton", background=[("active", "#cfd9e6")])
+        s.configure("Accent.TButton", foreground="white", background=ORANGE, font=(FONT[0], 11, "bold"))
+        s.map("Accent.TButton", background=[("active", ORANGE_DARK), ("disabled", "#f5b48f")],
+              foreground=[("disabled", "white")])
+        s.configure("Toolbutton", padding=(10, 5), background="#dfe6ef", foreground=TEXT)
+        s.map("Toolbutton", background=[("selected", NAVY_2), ("active", "#cfd9e6")],
               foreground=[("selected", "white")])
-        s.configure("Accent.TButton", foreground="white", background=ACCENT)
-        s.map("Accent.TButton", background=[("active", "#1559b0"), ("disabled", "#9bb8e0")])
-        self.configure(background="#f6f7f9")
+        s.configure("TCombobox", padding=4, arrowsize=16)
+        s.configure("TEntry", padding=4)
+        self.configure(background=PAGE)
 
     def _build(self):
-        top = ttk.Frame(self, padding=(14, 10))
+        top = tk.Frame(self, background=NAVY, padx=18, pady=12)
         top.pack(fill="x")
+        logo = tk.Canvas(top, width=40, height=40, background=NAVY, highlightthickness=0)
+        logo.pack(side="left", padx=(0, 12))
+        logo.create_oval(3, 3, 37, 37, fill=ORANGE, outline="#1a1a1a", width=2)  # a basketball
+        logo.create_line(20, 3, 20, 37, fill="#1a1a1a", width=2)
+        logo.create_line(3, 20, 37, 20, fill="#1a1a1a", width=2)
+        logo.create_arc(-12, 6, 14, 34, start=-60, extent=120, style="arc", outline="#1a1a1a", width=2)
+        logo.create_arc(26, 6, 52, 34, start=120, extent=120, style="arc", outline="#1a1a1a", width=2)
         self.league_name = tk.StringVar(value="Fantasy Hoops")
-        ttk.Label(top, textvariable=self.league_name, font=(FONT[0], 16, "bold")).pack(side="left")
+        titles = tk.Frame(top, background=NAVY)
+        titles.pack(side="left")
+        tk.Label(titles, textvariable=self.league_name, font=(FONT[0], 19, "bold"), background=NAVY,
+                 foreground="white").pack(anchor="w")
+        tk.Label(titles, text="Fantasy Hoops", font=(FONT[0], 10), background=NAVY,
+                 foreground="#9fb3cf").pack(anchor="w")
         self.refresh_btn = ttk.Button(top, text="Refresh", style="Accent.TButton", command=self.refresh)
         self.refresh_btn.pack(side="right")
         self.status = tk.StringVar()
-        ttk.Label(top, textvariable=self.status, style="Sub.TLabel").pack(side="right", padx=12)
+        tk.Label(top, textvariable=self.status, font=(FONT[0], 10), background=NAVY,
+                 foreground="#c7d3e3").pack(side="right", padx=14)
 
         self.tabs = ttk.Notebook(self)
-        self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.tabs.pack(fill="both", expand=True, padx=10, pady=(8, 10))
         self._standings_tab()
         self._my_team_tab()
         self.week_tab = self._week_tab()
@@ -231,12 +290,12 @@ class App(tk.Tk):
         self.my_title = tk.StringVar()
         ttk.Label(f, textvariable=self.my_title, font=(FONT[0], 12, "bold")).pack(anchor="w")
         ttk.Label(f, text="Alerts", style="Sub.TLabel").pack(anchor="w", pady=(8, 2))
-        self.alerts = tk.Text(f, height=6, wrap="word", relief="flat", padx=10, pady=8,
+        self.alerts = tk.Text(f, height=4, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=10, pady=8,
                               background="white", font=FONT, cursor="arrow")
         self.alerts.pack(fill="x")
         for prio, (_, color) in PRIORITY.items():
             self.alerts.tag_configure(f"p{prio}", foreground=color, font=(FONT[0], 10, "bold"))
-        self.alerts.tag_configure("detail", foreground="#444444", lmargin1=18, lmargin2=18,
+        self.alerts.tag_configure("detail", foreground=TEXT_2, lmargin1=18, lmargin2=18,
                                   spacing3=6)
         ttk.Label(f, text="Roster  (base = season avg, blended with projection early on;"
                           " L15 = last 15 days)", style="Sub.TLabel").pack(anchor="w", pady=(10, 2))
@@ -248,8 +307,8 @@ class App(tk.Tk):
                   style="Sub.TLabel").pack(side="left", padx=10)
         self.my_roster = Table(f, ("player", "keep", "pos", "your lineup", "today", "proj today", "NBA role", "nba",
                                    "status", "gp", "base", "L15", "trend", "vs proj", "fp tot"),
-                               text_cols=("player", "pos", "your lineup", "today", "NBA role", "nba", "status"),
-                               wide=("player",), widths={"keep": 60, "your lineup": 125, "today": 175,
+                               text_cols=("player", "keep", "pos", "your lineup", "today", "NBA role", "nba", "status"),
+                               wide=("player",), widths={"keep": 60, "your lineup": 130, "today": 180,
                                                           "NBA role": 215},
                                on_open=lambda v: self.show_player(v[0]))
         ttk.Label(f, text="your lineup = your fantasy slot today  ·  today = their NBA game (your time)  ·  "
@@ -285,7 +344,7 @@ class App(tk.Tk):
             col = ttk.Frame(lists)
             col.pack(side="left", fill="both", expand=True, padx=(0, 10) if i == 0 else 0)
             head = tk.StringVar()
-            row = tk.Frame(col, background="#f6f7f9")
+            row = tk.Frame(col, background=PAGE)
             row.pack(fill="x")
             tk.Frame(row, background=SERIES[i], width=6, height=20).pack(side="left", padx=(0, 6))
             ttk.Label(row, textvariable=head, font=(FONT[0], 11, "bold")).pack(side="left")
@@ -298,14 +357,14 @@ class App(tk.Tk):
 
         body = ttk.Frame(f)
         body.pack(fill="both", expand=True, pady=(10, 0))
-        self.tl_text = tk.Text(body, width=54, wrap="word", relief="flat", padx=12, pady=10,
+        self.tl_text = tk.Text(body, width=54, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=12, pady=10,
                                background="white", font=FONT, cursor="arrow")
         self.tl_text.pack(side="left", fill="y")
         self.tl_text.tag_configure("verdict", font=(FONT[0], 11, "bold"), spacing3=8)
         self.tl_text.tag_configure("a", foreground=SERIES[0], font=(FONT[0], 10, "bold"), spacing1=6)
         self.tl_text.tag_configure("b", foreground=SERIES[1], font=(FONT[0], 10, "bold"), spacing1=6)
         self.tl_text.tag_configure("body", foreground="#333333", lmargin1=12, lmargin2=12)
-        self.tl_text.tag_configure("muted", foreground="#777777", lmargin1=12, lmargin2=12)
+        self.tl_text.tag_configure("muted", foreground=MUTED, lmargin1=12, lmargin2=12)
         sugg = ttk.Frame(body, width=560)
         sugg.pack(side="left", fill="y", padx=(10, 0))
         sugg.pack_propagate(False)
@@ -313,7 +372,7 @@ class App(tk.Tk):
         ttk.Label(sugg, textvariable=self.tl_sugg_head, font=(FONT[0], 10, "bold")).pack(anchor="w")
         ttk.Label(sugg, text="Updates as you tick players. Click one to load it.", style="Sub.TLabel").pack(anchor="w")
         self.tl_sugg = Table(sugg, ("sends", "gets", "you", "them"), text_cols=("sends", "gets"),
-                             widths={"sends": 215, "gets": 215, "you": 58, "them": 58})
+                             widths={"sends": 185, "gets": 185, "you": 56, "them": 62})
         self.tl_sugg.pack(fill="both", expand=True, pady=(4, 0))
         self.tl_sugg.tree.bind("<ButtonRelease-1>", self._trade_apply_suggestion)
         self._tl_options = []
@@ -386,7 +445,7 @@ class App(tk.Tk):
         # A blank image makes the label size itself in pixels; text shows on top when there's no photo.
         self._blank = tk.PhotoImage(width=PHOTO_W, height=PHOTO_H)
         self.photo_label = tk.Label(top, image=self._blank, compound="center", background="#e9ecf1",
-                                    text="", foreground="#888888", font=FONT)
+                                    text="", foreground=MUTED, font=FONT)
         self.photo_label.pack(side="left", padx=(0, 14))
         self._photo = None        # keep a reference or Tk drops the image
         self._photo_for = None    # player id the photo belongs to, so slow downloads can't show the wrong face
@@ -411,7 +470,8 @@ class App(tk.Tk):
         side.pack_propagate(False)
         self.breakdown_head = tk.StringVar()
         ttk.Label(side, textvariable=self.breakdown_head, style="Sub.TLabel").pack(anchor="w", pady=(0, 2))
-        self.breakdown = Table(side, ("stat", "per game", "pts each", "fantasy pts"), text_cols=("stat",))
+        self.breakdown = Table(side, ("stat", "per game", "pts each", "fantasy pts"), text_cols=("stat",),
+                               widths={"stat": 64, "per game": 88, "pts each": 84, "fantasy pts": 104})
         self.breakdown.pack(fill="both", expand=True)
         self.breakdown.tree.bind("<<TreeviewSelect>>", self._breakdown_clicked)
 
@@ -482,7 +542,7 @@ class App(tk.Tk):
         side.pack_propagate(False)
         ttk.Label(side, text="Side by side (edge = extra fantasy pts per game)", style="Sub.TLabel").pack(anchor="w")
         self.cmp_table = Table(side, ("stat", "player 1", "player 2", "edge"), text_cols=("stat", "edge"),
-                               wide=("edge",), widths={"stat": 120, "player 1": 90, "player 2": 90, "edge": 150})
+                               wide=("edge",), widths={"stat": 110, "player 1": 80, "player 2": 80, "edge": 140})
         self.cmp_table.pack(fill="both", expand=True)
         self.cmp_chart = ParallelChart(body, height=360)
         self.cmp_chart.pack(side="left", fill="both", expand=True)
@@ -499,7 +559,7 @@ class App(tk.Tk):
         top.pack(fill="x", pady=(6, 10))
         self.wk_lineup = Table(top, ("slot", "player", "game", "pts", "change"),
                                text_cols=("slot", "player", "game", "change"), wide=("player",),
-                               widths={"slot": 60, "game": 170, "pts": 70, "change": 230}, height=10,
+                               widths={"slot": 60, "game": 185, "pts": 70, "change": 230}, height=10,
                                on_open=lambda v: self.show_player(v[1]) if v[1] else None)
         self.wk_lineup.pack(side="left", fill="both", expand=True)
         days = ttk.Frame(top)
@@ -551,11 +611,11 @@ class App(tk.Tk):
                                 on_open=lambda v: self.show_player(v[0]))
         self.news_table.pack(fill="both", expand=True)
         self.news_table.tree.bind("<<TreeviewSelect>>", self._news_selected)
-        self.news_detail = tk.Text(f, height=9, wrap="word", relief="flat", padx=12, pady=10, background="white",
+        self.news_detail = tk.Text(f, height=9, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=12, pady=10, background="white",
                                    font=FONT, cursor="arrow")
         self.news_detail.pack(fill="x", pady=(8, 0))
         self.news_detail.tag_configure("head", font=(FONT[0], 11, "bold"))
-        self.news_detail.tag_configure("muted", foreground="#777777")
+        self.news_detail.tag_configure("muted", foreground=MUTED)
         self._news_ids = []
         return f
 
