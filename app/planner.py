@@ -10,6 +10,7 @@ from fantasy import OUT_STATUSES, form_of
 from projections import nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
+LONG_TERM_SLACK = 2.0  # a streamer may replace someone at most this many fp/g better than him
 
 
 def lineup_slots(league):
@@ -37,11 +38,12 @@ def open_ir_slots(league, team):
 
 
 def ir_candidates(league, team, injuries, days=7):
-    """Injured players not on IR who won't be back within `days`: (player, return date or None)."""
+    """IR-eligible players not on IR yet who won't be back within `days`: (player, return date or None).
+    ESPN only lets players listed INJ (injury reserve) into the IR slot - plain OUT isn't enough."""
     soon = date.today() + timedelta(days=days)
     out = []
     for p in team.roster:
-        if p.lineupSlot == "IR" or (p.injuryStatus or "ACTIVE") not in OUT_STATUSES:
+        if p.lineupSlot == "IR" or (p.injuryStatus or "ACTIVE") != "INJURY_RESERVE":
             continue
         info = injuries.get(p.playerId)
         back = info["return_date"] if info else None
@@ -151,6 +153,8 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
             gain = sum(d["points"] for d in week(league, roster + [fa], vals, injuries, days)) - base
             best = (gain, ir, True)
         for drop in drops:
+            if values[drop.playerId] > f.baseline + LONG_TERM_SLACK:
+                continue  # dropping is permanent: never lose a better player for a one-week stream
             trial = [p for p in roster if p is not drop] + [fa]
             gain = sum(d["points"] for d in week(league, trial, vals, injuries, days)) - base
             if best is None or gain > best[0] + 0.05:

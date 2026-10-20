@@ -276,7 +276,9 @@ def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
     if not picks or picks[0]["gain"] < min_gain:
         return []
     s = picks[0]
-    how = f"move {s['drop'].name} to IR" if s["to_ir"] else f"drop {s['drop'].name}"
+    drop_base = form_of(s["drop"], league.year).baseline
+    how = (f"move {s['drop'].name} to IR" if s["to_ir"] else
+           f"drop {s['drop'].name} (base {drop_base:.1f} vs his {s['fa'].baseline:.1f})")
     return [Alert(f"stream:{s['fa'].player.playerId}:{s['drop'].playerId}", 2,
                   f"Stream {s['fa'].player.name}: +{s['gain']:.0f} pts over the next 7 days",
                   f"Add {fmt(s['fa'])} and {how}. He plays {s['games']} games this week, "

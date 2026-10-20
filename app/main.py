@@ -497,8 +497,9 @@ class App(tk.Tk):
         ttk.Label(f, text="Streamers: free agents who'd add the most points over the next 7 days",
                   font=(FONT[0], 10, "bold")).pack(anchor="w")
         ttk.Label(f, text="Counts only games on days you'd actually start him. 'make room' = who leaves your active "
-                          "roster: an injured player to your empty IR slot first, otherwise your cheapest drop. "
-                          "No acquisition limit in your league.", style="Sub.TLabel").pack(anchor="w")
+                          "roster: a player listed INJ to your empty IR slot first, otherwise a drop (never someone "
+                          "more than 2 fp/g better long-term than the streamer). No acquisition limit in your league.",
+                  style="Sub.TLabel", wraplength=1800).pack(anchor="w")
         self.wk_streams = Table(f, ("add", "pos", "nba", "base", "games", "on light days", "gain (7 days)",
                                     "make room"),
                                 text_cols=("add", "pos", "nba", "make room"), wide=("add", "make room"), height=8,
@@ -937,7 +938,8 @@ class App(tk.Tk):
         rows = []
         for s in plan.get("streamers") or []:
             fa = s["fa"]
-            room = f"IR: {s['drop'].name}" if s["to_ir"] else f"drop {s['drop'].name}"
+            drop_base = fantasy.form_of(s["drop"], league.year).baseline
+            room = f"IR: {s['drop'].name}" if s["to_ir"] else f"drop {s['drop'].name} ({drop_base:.1f})"
             rows.append((fa.player.name, fa.player.position, fa.player.proTeam, f"{fa.baseline:.1f}", s["games"],
                          s["light_games"], f"+{s['gain']:.0f}", room))
         self.wk_streams.set_rows(rows or [("No free agent adds points this week.", "", "", "", "", "", "", "")])

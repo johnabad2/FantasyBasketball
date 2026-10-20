@@ -40,7 +40,8 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   started) with exactly what to change on ESPN; the **next 7 days** showing how many of your 10
   slots you'll fill each day; and **streamers**: free agents ranked by how many points they'd add
   this week, counting only games on days you'd actually start them, and who to make room with
-  (an injured player to your empty IR slot first, otherwise your cheapest drop)
+  (a player listed INJ to your empty IR slot first, otherwise a drop, never someone more than
+  2 fp/g better long-term than the streamer)
 - **News**: ESPN's injury report for your team, every rostered player or every injured NBA
   player, with expected return dates; click a player for the full note and latest news
 - **Free Agents**: the top 100 available players; green ones beat your weakest player
@@ -123,7 +124,7 @@ The alerts:
 | Bench X (do now) | A starter is OUT, on IR, or suspended |
 | Set your lineup (do now) | Your best legal lineup today scores more than the one you've set |
 | Status change | One of your players went e.g. active -> out, or is back (alerts for a day) |
-| Move X to IR | He's out beyond this week and your IR slot is empty |
+| Move X to IR | He's listed INJ (IR-eligible on ESPN; plain OUT isn't), out beyond this week, and your IR slot is empty |
 | Stream X | A free agent would add 15+ points over the next 7 days |
 | Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
