@@ -203,7 +203,8 @@ def build_alerts(league, my_team, thresholds):
     mine = [form_of(p, year) for p in my_team.roster]
     others = [(tm, [form_of(p, year) for p in tm.roster])
               for tm in league.teams if tm.team_id != my_team.team_id]
-    fas = [form_of(p, year) for p in league.free_agents(size=75)]
+    # proTeam "FA" means unsigned in the NBA: no games, no points.
+    fas = [form_of(p, year) for p in league.free_agents(size=75) if p.proTeam != "FA"]
     alerts = (injury_alerts(mine) + waiver_alerts(mine, fas, thresholds)
               + trade_alerts(mine, others, thresholds) + form_alerts(mine, thresholds))
     return sorted(alerts, key=lambda a: a.priority)
