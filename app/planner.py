@@ -7,7 +7,7 @@ import time
 from datetime import date, datetime, timedelta
 
 from fantasy import OUT_STATUSES, form_of
-from projections import nba_team_id
+from projections import availability, nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
 LONG_TERM_SLACK = 0.0  # never drop someone better per game than the streamer (fp/g)
@@ -117,10 +117,12 @@ def _cands(league, players, values, day, injuries, not_started=False):
 
 
 def games_after(league, player, first_day, injuries):
-    """Games he's expected to play from `first_day` to the end of the fantasy season
-    (his NBA schedule, skipping games before an injured player's expected return)."""
+    """Games he's expected to play from `first_day` to the end of the fantasy season: his NBA
+    schedule (skipping games before an injured player's expected return) x the share of games
+    ESPN expects him to play, so injury-prone players count for less."""
     final = getattr(league, "finalScoringPeriod", None) or 174
-    return sum(1 for day in range(first_day, final + 1) if _available(player, _game(league, player, day), injuries))
+    scheduled = sum(1 for day in range(first_day, final + 1) if _available(player, _game(league, player, day), injuries))
+    return scheduled * availability(player, league.year)
 
 
 def _day_date(league, day):
@@ -211,25 +213,6 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
                         "drop_gain": best_drop[0] if best_drop else None, "gain": gain, "games": len(games),
                         "light_games": sum(1 for d in games if d in light_days)})
     return sorted(out, key=lambda x: -x["gain"])[:top]
-
-
-def swap_value(league, team, add, drop, injuries, days=7):
-    """What adding `add` and dropping `drop` (None = open spot) does to `team`: points over the next
-    `days` days (best lineup each day) and over the rest of the season after that (games left x base)."""
-    roster = list(team.roster)
-    values = {p.playerId: form_of(p, league.year).baseline for p in roster}
-    add_base = form_of(add, league.year).baseline
-    base_week = week(league, roster, values, injuries, days)
-    trial = [p for p in roster if drop is None or p.playerId != drop.playerId] + [add]
-    new_week = week(league, trial, {**values, add.playerId: add_base}, injuries, days)
-    after = (base_week[-1]["day"] + 1) if base_week else (getattr(league, "current_week", 1) or 1)
-    add_games = games_after(league, add, after, injuries)
-    drop_games = games_after(league, drop, after, injuries) if drop else 0
-    drop_base = values[drop.playerId] if drop else 0.0
-    return {"this_week": sum(d["points"] for d in new_week) - sum(d["points"] for d in base_week),
-            "rest_of_season": add_base * add_games - drop_base * drop_games,
-            "add_base": add_base, "drop_base": drop_base, "add_games_after": add_games,
-            "drop_games_after": drop_games, "days": days}
 
 
 def today_moves(league, team, injuries):

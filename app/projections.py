@@ -7,6 +7,16 @@ import time
 from fantasy import form_of
 import lineup
 
+NBA_GAMES = 82
+
+
+def availability(player, year):
+    """Share of his team's games ESPN expects him to play (its projected games / 82), e.g. 64 -> 0.78.
+    Injury-prone players and minutes-managed vets come out lower. 1.0 when ESPN has no projection."""
+    from stats import games, split_of
+    projected = games(split_of(player, year, "projected"))
+    return min(projected / NBA_GAMES, 1.0) if projected else 1.0
+
 
 def nba_team_id(player):
     tid = getattr(player, "proTeamId", None)
@@ -48,13 +58,15 @@ def projected_final(league):
 
 def rest_of_season(league, players, slots):
     """Fantasy points `players` would score from now to the end of the season: each remaining day,
-    the best `slots` of them whose NBA team plays (injured-reserve players sit). Bench players count
+    the best `slots` of them whose NBA team plays (injured-reserve players sit), each scaled by how
+    many of his games ESPN expects him to play. Bench players count
     on days a starter has no game - which is why depth matters in a daily-lineup league."""
     schedule = getattr(league, "pro_schedule", None) or {}
     today = getattr(league, "current_week", 1) or 1
     final = getattr(league, "finalScoringPeriod", None) or 174
     now_ms = time.time() * 1000
-    roster = [(form_of(p, league.year).baseline, nba_team_id(p)) for p in players
+    # expected value per scheduled game = base x the share of games he's expected to play
+    roster = [(form_of(p, league.year).baseline * availability(p, league.year), nba_team_id(p)) for p in players
               if (p.injuryStatus or "") != "INJURY_RESERVE"]
     total = 0.0
     for day in range(today, final + 1):
