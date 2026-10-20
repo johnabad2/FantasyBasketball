@@ -367,12 +367,8 @@ class App(tk.Tk):
                                text_cols=("team", "owner"), wide=("team", "owner"), height=10,
                                on_open=lambda v: self.show_team(v[1]))
         self.standings.pack(fill="both", expand=True)
-        ttk.Label(f, text="Double-click a team to see its roster. 'change' is points since the "
-                          "last saved snapshot.", style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
-        ttk.Label(f, text="proj final = points so far + the rest of the season simulated day by day on the real "
-                          "NBA schedule: each day a team scores with its best 10 players who have a game, at their "
-                          "base value (ESPN's projection early on, real form later).",
-                  style="Sub.TLabel", wraplength=1400).pack(anchor="w", pady=(2, 0))
+        ttk.Label(f, text="Double-click a team to see its roster.  ·  proj final = projected season total.",
+                  style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
 
     def _my_team_tab(self):
         f = self._tab("My Team")
@@ -386,13 +382,11 @@ class App(tk.Tk):
             self.alerts.tag_configure(f"p{prio}", foreground=color, font=(FONT[0], 10, "bold"))
         self.alerts.tag_configure("detail", foreground=TEXT_2, lmargin1=18, lmargin2=18,
                                   spacing3=6)
-        ttk.Label(f, text="Roster  (base = season avg, blended with projection early on;"
-                          " L15 = last 15 days)", style="Sub.TLabel").pack(anchor="w", pady=(10, 2))
+        ttk.Label(f, text="Roster", style="Sub.TLabel").pack(anchor="w", pady=(10, 2))
         keep_bar = ttk.Frame(f)
         keep_bar.pack(fill="x", pady=(0, 4))
         ttk.Button(keep_bar, text="Keep / unkeep selected player", command=self._toggle_keep).pack(side="left")
-        ttk.Label(keep_bar, text="Kept players are never suggested as a drop or as trade bait (streamers, waiver "
-                                 "pickups, trade ideas). Saved in config\\keep.json.",
+        ttk.Label(keep_bar, text="Kept players are never suggested to drop or trade.",
                   style="Sub.TLabel").pack(side="left", padx=10)
         self.my_roster = Table(f, ("player", "keep", "pos", "your lineup", "today", "proj today", "NBA role", "nba",
                                    "status", "gp", "base", "L15", "trend", "vs proj", "fp tot"),
@@ -400,11 +394,9 @@ class App(tk.Tk):
                                wide=("player",), widths={"keep": 60, "your lineup": 130, "today": 180,
                                                           "NBA role": 215},
                                on_open=lambda v: self.show_player(v[0]))
-        ttk.Label(f, text="your lineup = your fantasy slot today  ·  today = their NBA game (your time)  ·  "
-                          "NBA role = how many of their last games they started (pre = preseason)  ·  "
-                  "proj today = expected fantasy pts if he plays today  ·  vs proj = season pts/game minus "
-                  "ESPN's projection (after 3 games)",
-                  style="Sub.TLabel", wraplength=1700).pack(anchor="w", pady=(4, 0))
+        ttk.Label(f, text="base = pts per game  ·  L15 = last 15 days  ·  NBA role = recent starts  ·  "
+                          "vs proj = beating or missing ESPN's projection",
+                  style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
         self.my_roster.pack(fill="both", expand=True)
 
     def _trade_lab_tab(self):
@@ -420,8 +412,7 @@ class App(tk.Tk):
         for box in (self.tl_a, self.tl_b):
             box.bind("<<ComboboxSelected>>", lambda e: self._trade_teams_changed())
         ttk.Button(bar, text="Clear picks", command=self._trade_clear).pack(side="left", padx=12)
-        ttk.Label(bar, text="Click players to tick them. base = per-game value, L15 = last 15 days.",
-                  style="Sub.TLabel").pack(side="right")
+        ttk.Label(bar, text="Click players to tick them.", style="Sub.TLabel").pack(side="right")
 
         lists = ttk.Frame(f)
         lists.pack(fill="x")
@@ -459,7 +450,7 @@ class App(tk.Tk):
         sugg.pack_propagate(False)
         self.tl_sugg_head = tk.StringVar()
         ttk.Label(sugg, textvariable=self.tl_sugg_head, font=(FONT[0], 10, "bold")).pack(anchor="w")
-        ttk.Label(sugg, text="Updates as you tick players. Click one to load it.", style="Sub.TLabel").pack(anchor="w")
+        ttk.Label(sugg, text="Click one to load it.", style="Sub.TLabel").pack(anchor="w")
         self.tl_sugg = Table(sugg, ("sends", "gets", "you", "them"), text_cols=("sends", "gets"),
                              widths={"sends": 185, "gets": 185, "you": 56, "them": 62})
         self.tl_sugg.pack(fill="both", expand=True, pady=(4, 0))
@@ -490,16 +481,14 @@ class App(tk.Tk):
                                    text_cols=("player", "pos", "nba", "slot", "status"), wide=("player",),
                                    widths=SHOOTING_WIDTHS, on_open=lambda v: self.show_player(v[0]))
         self.league_roster.pack(fill="both", expand=True)
-        ttk.Label(f, text="* no games yet: numbers are ESPN's projection. Double-click a player for details.",
-                  style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
+        ttk.Label(f, text="* = ESPN projection (no games yet)", style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
         return f
 
     def _free_agents_tab(self):
         f = self._tab("Free Agents")
         self.fa_head = tk.StringVar()
         ttk.Label(f, textvariable=self.fa_head, font=(FONT[0], 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Green = better than one of your players right now (worth = average of base and L15)."
-                          " Double-click for details.", style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
+        ttk.Label(f, text="Green = better than one of your players.", style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
         self.free_agents = Table(f, ("player", "pos", "nba", "status", "gp", "base", "L15", "trend",
                                      "vs proj", "worth", "drop for them", "gain"),
                                  text_cols=("player", "pos", "nba", "status", "drop for them"),
@@ -509,8 +498,7 @@ class App(tk.Tk):
     def _trades_tab(self):
         f = self._tab("Trades")
         ttk.Label(f, text="Trade ideas", font=(FONT[0], 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Their player is better on base, but not hotter than yours lately, so the offer"
-                          " looks fair to them. Up to 3 per team. Double-click to open the player you'd get.",
+        ttk.Label(f, text="Better players whose recent form makes the swap look fair to them.",
                   style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
         self.trades = Table(f, ("team", "owner", "you send", "send base", "send L15",
                                 "you get", "get base", "get L15", "gain/g"),
@@ -629,7 +617,7 @@ class App(tk.Tk):
         side = ttk.Frame(body, width=470)
         side.pack(side="right", fill="y", padx=(14, 0))
         side.pack_propagate(False)
-        ttk.Label(side, text="Side by side (edge = extra fantasy pts per game)", style="Sub.TLabel").pack(anchor="w")
+        ttk.Label(side, text="Edge = extra fantasy pts per game", style="Sub.TLabel").pack(anchor="w")
         self.cmp_table = Table(side, ("stat", "player 1", "player 2", "edge"), text_cols=("stat", "edge"),
                                wide=("edge",), widths={"stat": 110, "player 1": 80, "player 2": 80, "edge": 140})
         self.cmp_table.pack(fill="both", expand=True)
@@ -653,7 +641,7 @@ class App(tk.Tk):
         self.wk_lineup.pack(side="left", fill="both", expand=True)
         days = ttk.Frame(top)
         days.pack(side="left", fill="both", expand=True, padx=(14, 0))
-        ttk.Label(days, text="Next 7 days: lineup slots you'll fill  (click a day to see its lineup)",
+        ttk.Label(days, text="Next 7 days  (click a day)",
                   font=(FONT[0], 10, "bold")).pack(anchor="w")
         self.wk_days = Table(days, ("day", "slots filled", "proj pts", "who's playing"),
                              text_cols=("day", "slots filled", "who's playing"), wide=("who's playing",),
@@ -664,15 +652,9 @@ class App(tk.Tk):
         self.wk_days_note = tk.StringVar()
         ttk.Label(days, textvariable=self.wk_days_note, style="Sub.TLabel", wraplength=700).pack(anchor="w", pady=(4, 0))
 
-        ttk.Label(f, text="Streamers: free agents who'd add the most points over the next 7 days",
+        ttk.Label(f, text="Streamers: best pickups for the next 7 days",
                   font=(FONT[0], 10, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Counts only games on days you'd actually start him. 'make room' = who leaves your active "
-                          "roster: an open roster spot if you have one, then your empty IR slot (INJ players always qualify; O "
-                          "players only once ESPN marks them IR-eligible, so check on ESPN), otherwise a drop - only if "
-                          "you also come out ahead over the 'rest of season' (his expected remaining games vs the "
-                          "dropped player's, at their base value; expected = scheduled games x the share ESPN expects "
-                          "him to play). No acquisition limit in your league.",
-                  style="Sub.TLabel", wraplength=1800).pack(anchor="w")
+        ttk.Label(f, text="Only drops that also win over the rest of the season.", style="Sub.TLabel").pack(anchor="w")
         self.wk_streams = Table(f, ("add", "pos", "nba", "base", "games", "on light days", "gain (7 days)",
                                     "rest of season", "make room"),
                                 text_cols=("add", "pos", "nba", "make room"), wide=("add", "make room"), height=8,
@@ -690,8 +672,7 @@ class App(tk.Tk):
         self.news_scope.current(0)
         self.news_scope.pack(side="left", padx=6)
         self.news_scope.bind("<<ComboboxSelected>>", lambda e: self._fill_news())
-        ttk.Label(bar, text="From ESPN's injury report. Click a player for the full note and latest news.",
-                  style="Sub.TLabel").pack(side="right")
+        ttk.Label(bar, text="Click a player for the latest news.", style="Sub.TLabel").pack(side="right")
         self.news_table = Table(f, ("player", "fantasy team", "status", "injury", "back", "latest update"),
                                 text_cols=("player", "fantasy team", "status", "injury", "back", "latest update"),
                                 wide=("latest update",),
@@ -1057,8 +1038,7 @@ class App(tk.Tk):
         worse = "  (fewer is better for you)" if fewer_is_better else ""
         span = "" if pick == "All games" else f", {pick.lower()}"
         self.chart.show(games, stat, f"{gamelog.STAT_NAMES[stat]} per game  ·  {self._chart_name}{worse}",
-                        note=f"{self._games_label}{span}  ·  {len(games)} games  ·  average is over the games shown"
-                             "  ·  hover a dot for that game's box score",
+                        note=f"{self._games_label}{span}  ·  {len(games)} games  ·  hover a dot for details",
                         fewer_is_better=fewer_is_better)
 
     def _breakdown_clicked(self, _event):
@@ -1086,8 +1066,7 @@ class App(tk.Tk):
         plan, league = d.get("plan") or {}, d["league"]
         games = lineup.todays_games(league)
         moves = plan.get("moves")
-        self.wk_caption.set("Best legal lineup for the rest of today (positions respected; players whose game has "
-                            "started are locked). Make these changes on ESPN.")
+        self.wk_caption.set("Best lineup for the rest of today. Make the changes on ESPN.")
         if not moves:
             self.wk_today.set("No NBA schedule (demo mode).")
             self.wk_lineup.set_rows([])
@@ -1128,8 +1107,7 @@ class App(tk.Tk):
         games = lineup.games_on(league, day["day"])
         self.wk_today.set(f"{day['date']:%A %d %b}: {day['filled']}/{day['slots']} slots filled, "
                           f"about {day['points']:.0f} pts")
-        self.wk_caption.set("Best legal lineup for that day from your current roster (injured players count from "
-                            "their expected return). Click today's row to get back to today's moves.")
+        self.wk_caption.set("Best lineup for that day. Click today's row to go back.")
         team_of = projections.nba_team_id
         rows, tags = [], []
         for si, slot in enumerate(day["slot_names"]):
@@ -1177,8 +1155,7 @@ class App(tk.Tk):
             self.wk_days.tree.selection_set(str(self._wk_selected))
         light = [day for day in week if day["filled"] < day["slots"]]
         empty = sum(day["slots"] - day["filled"] for day in week)
-        self.wk_days_note.set(f"{empty} empty slot-days this week. Red = half your lineup or more is empty: "
-                              "that's where streamers earn points." if week else "")
+        self.wk_days_note.set(f"{empty} empty slots this week. Red = half empty." if week else "")
 
     def _fill_streamers(self):
         plan, league = self.data.get("plan") or {}, self.data["league"]
@@ -1463,8 +1440,7 @@ class App(tk.Tk):
         inverted = {"TO"} if mode == "raw" else set()
         title = "Fantasy points each stat earns per game" if mode == "fantasy" else "Per-game stats"
         self.cmp_chart.show(axes, players, ranges, inverted, title,
-                            note=f"{self.cmp_split.get()}  ·  each axis spans every rostered player in your league"
-                                 "  ·  up is always better for fantasy  ·  hover an axis to compare")
+                            note=f"{self.cmp_split.get()}  ·  higher is always better")
         self._fill_compare_table(axes, players, rules, mode)
 
     def _fill_compare_table(self, axes, players, rules, mode):
