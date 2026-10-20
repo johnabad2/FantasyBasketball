@@ -258,14 +258,19 @@ def cmd_scoring(league, rules):
 
 
 def cmd_activity(league, size):
-    rows = []
+    import chat
+    items = []
     for act in league.recent_activity(size=size):
-        when = datetime.fromtimestamp(act.date / 1000).strftime("%d %b %H:%M")
+        when = datetime.fromtimestamp(act.date / 1000)
         for team, action, player, *_ in act.actions:
-            rows.append((when, getattr(team, "team_name", team) or "-", action.lower(),
-                         getattr(player, "name", player) or "-"))
+            items.append((when, getattr(team, "team_name", team) or "-", action.lower(),
+                          getattr(player, "name", player) or "-"))
+    if getattr(league, "pro_schedule", None):
+        items += [(m["when"], m["team"] or "-", "chat", f'{m["author"]}: {m["text"]}') for m in chat.league_chat(league)]
+    items.sort(key=lambda x: x[0], reverse=True)
+    rows = [(when.strftime("%d %b %H:%M"), *rest) for when, *rest in items[:size]]
     if rows:
-        table(rows, ("when", "team", "move", "player"))
+        table(rows, ("when", "team", "move", "player / message"))
     else:
         print("No recent activity.")
 

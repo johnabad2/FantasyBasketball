@@ -13,6 +13,7 @@ from datetime import datetime
 from tkinter import ttk
 
 import fantasy
+import chat
 import gamelog
 import lineup
 import news
@@ -691,10 +692,20 @@ class App(tk.Tk):
 
     def _activity_tab(self):
         f = self._tab("Activity")
-        self.activity = Table(f, ("when", "team", "move", "player"),
-                              text_cols=("when", "team", "move", "player"), wide=("player",),
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Label(bar, text="Show").pack(side="left")
+        self.activity_show = ttk.Combobox(bar, state="readonly", width=16,
+                                          values=["Everything", "Moves only", "Chat only"])
+        self.activity_show.current(0)
+        self.activity_show.pack(side="left", padx=6)
+        self.activity_show.bind("<<ComboboxSelected>>", lambda e: self._fill_activity())
+        ttk.Label(bar, text="Chat in blue.", style="Sub.TLabel").pack(side="left", padx=10)
+        self.activity = Table(f, ("when", "team", "move", "player / message"),
+                              text_cols=("when", "team", "move", "player / message"), wide=("player / message",),
                               widths={"when": 140, "team": 370, "move": 145},
-                              on_open=lambda v: self.show_player(v[3]))
+                              on_open=lambda v: self.show_player(v[3]) if v[2] != "chat" else None)
+        self.activity.tree.tag_configure("chat", foreground=T["chat"])
         self.activity.pack(fill="both", expand=True)
 
     # ------------------------------------------------------------ background work
@@ -765,6 +776,7 @@ class App(tk.Tk):
             activity = league.recent_activity(size=50)
         except Exception:
             activity = []
+        chat_msgs = chat.league_chat(league) if getattr(league, "pro_schedule", None) else []
         analysis = fantasy.analyze(league, me, fa_count=100)
         mine, others, fas = analysis
         projected = projections.projected_final(league)
@@ -778,7 +790,7 @@ class App(tk.Tk):
                     injuries=injuries, plan=plan,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3),
-                    activity=activity)
+                    activity=activity, chat=chat_msgs)
 
     def _show(self, d):
         self.data = d
@@ -947,13 +959,21 @@ class App(tk.Tk):
         self.league_roster.set_rows([rows[i] for i in order], [tags[i] for i in order])
 
     def _fill_activity(self):
-        rows = []
-        for act in self.data["activity"]:
-            when = datetime.fromtimestamp(act.date / 1000).strftime("%d %b %H:%M")
-            for team, action, player, *_ in act.actions:
-                rows.append((when, getattr(team, "team_name", team) or "-", action.lower(),
-                             getattr(player, "name", player) or "-"))
-        self.activity.set_rows(rows or [("", "No recent activity.", "", "")])
+        show = self.activity_show.get()
+        items = []  # (time, row, tag)
+        if show != "Chat only":
+            for act in self.data["activity"]:
+                when = datetime.fromtimestamp(act.date / 1000)
+                for team, action, player, *_ in act.actions:
+                    items.append((when, (getattr(team, "team_name", team) or "-", action.lower(),
+                                         getattr(player, "name", player) or "-"), ()))
+        if show != "Moves only":
+            for m in self.data.get("chat") or []:
+                items.append((m["when"], (m["team"] or "-", "chat", f'{m["author"]}: {m["text"]}'), ("chat",)))
+        items.sort(key=lambda x: x[0], reverse=True)
+        rows = [(when.strftime("%d %b %H:%M"), *row) for when, row, _ in items]
+        tags = [tag for _, _, tag in items]
+        self.activity.set_rows(rows or [("", "Nothing here yet.", "", "")], tags if rows else None)
 
     # ------------------------------------------------------------ navigation
 

@@ -14,7 +14,7 @@ DARK = {
     "tab_bg": "#1d2635", "tab_active": "#263245", "tab_selected": "#1a2230", "tab_selected_fg": "#ffffff",
     "button_bg": "#26324a", "button_active": "#31405c", "toggle_on": "#2f5a9e",
     "field_bg": "#1a2230", "photo_bg": "#232d3d",
-    "red": "#f87171", "amber": "#fbbf24", "green": "#4ade80",
+    "red": "#f87171", "amber": "#fbbf24", "green": "#4ade80", "chat": "#93c5fd",
     "chart_surface": "#1a1a19", "chart_ink": "#f0efec", "chart_ink2": "#c3c2b7", "chart_muted": "#a8a69d",
     "chart_grid": "#2c2c2a", "chart_axis": "#46463f", "chart_wash": "#26303d", "chart_other": "#5c5b55",
     "chart_border": "#2c3747", "tooltip_bg": "#262624", "tooltip_border": "#46463f",
