@@ -1,4 +1,4 @@
-# Fantasy Hoops
+# FantasyBasketball
 
 Reads your ESPN NBA fantasy league and tells you what to do: bench injured starters, grab hot
 free agents, sell players on hot streaks, and trade for slumping stars on your friends' teams.
@@ -8,8 +8,8 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 1. Copy `config.example.json` to `config.json`.
 2. **league_id**: the number after `leagueId=` in your ESPN league URL.
 3. **year**: `2027` for the 2026-27 season (ESPN names a season by the year it ends).
-4. **espn_s2 / swid** (private leagues only): on espn.com, logged in, open DevTools (F12) →
-   Application → Cookies → `https://www.espn.com`, then copy the `espn_s2` and `SWID` values.
+4. **espn_s2 / swid** (private leagues only): on espn.com, logged in, open DevTools (F12) â†’
+   Application â†’ Cookies â†’ `https://www.espn.com`, then copy the `espn_s2` and `SWID` values.
    These cookies log into your ESPN account, so never share `config.json`.
 5. Run `.venv\Scripts\python fantasy.py teams` and put your team's id in **my_team_id**.
 
@@ -30,7 +30,7 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
   projection until the player has 10 games. Category leagues use a rough composite of the
   counting stats instead.
 - **L15**: average over the last 15 days.
-- **trend**: L15 against base. ±25% or more counts as hot or slumping (after 5 games).
+- **trend**: L15 against base. Â±25% or more counts as hot or slumping (after 5 games).
 
 The alerts:
 
