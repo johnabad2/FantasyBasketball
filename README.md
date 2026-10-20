@@ -71,6 +71,23 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
 Click a column header to sort; double-click a player or team to open it. The window refreshes
 from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here too.
 
+## Ask AI
+
+The **Ask AI** tab answers questions like "is Hartenstein worth it over Turner?" or "is this trade good
+for me?". Claude (Claude Opus 5.5) looks up your league with read-only tools built on the app's own
+math - player stats and projections, your roster, the Trade Lab simulation, add/drop value, your week
+plan, standings and free agents - and never changes anything on ESPN. Follow-up questions work;
+**New chat** starts over.
+
+Setup: create an API key at console.anthropic.com (pay-as-you-go, separate from a Claude
+subscription; add a little credit under Billing), then add it to `config\config.json`:
+
+```
+"anthropic_api_key": "sk-ant-...",
+```
+
+Each answer shows roughly what it cost (usually a few cents). The key stays on your PC.
+
 ## Keep list
 
 Players you never want suggested as a drop or as trade bait (streamers, waiver pickups, trade

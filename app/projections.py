@@ -39,23 +39,31 @@ def projected_final(league):
     if not schedule:
         return None
     from trade import lineup_slots
+    out = {}
+    for team in league.teams:
+        rest = rest_of_season(league, team.roster, lineup_slots(team))
+        out[team.team_id] = (team.points_for, rest, team.points_for + rest)
+    return out
+
+
+def rest_of_season(league, players, slots):
+    """Fantasy points `players` would score from now to the end of the season: each remaining day,
+    the best `slots` of them whose NBA team plays (injured-reserve players sit). Bench players count
+    on days a starter has no game - which is why depth matters in a daily-lineup league."""
+    schedule = getattr(league, "pro_schedule", None) or {}
     today = getattr(league, "current_week", 1) or 1
     final = getattr(league, "finalScoringPeriod", None) or 174
     now_ms = time.time() * 1000
-    out = {}
-    for team in league.teams:
-        players = [(form_of(p, league.year).baseline, nba_team_id(p)) for p in team.roster
-                   if (p.injuryStatus or "") != "INJURY_RESERVE"]
-        slots = lineup_slots(team)
-        rest = 0.0
-        for day in range(today, final + 1):
-            key = str(day)
-            playing = []
-            for value, tid in players:
-                for game in schedule.get(tid, {}).get(key, []):
-                    if day > today or game["date"] > now_ms:  # today: only games not started yet
-                        playing.append(value)
-                        break
-            rest += sum(sorted(playing, reverse=True)[:slots])
-        out[team.team_id] = (team.points_for, rest, team.points_for + rest)
-    return out
+    roster = [(form_of(p, league.year).baseline, nba_team_id(p)) for p in players
+              if (p.injuryStatus or "") != "INJURY_RESERVE"]
+    total = 0.0
+    for day in range(today, final + 1):
+        key = str(day)
+        playing = []
+        for value, tid in roster:
+            for game in schedule.get(tid, {}).get(key, []):
+                if day > today or game["date"] > now_ms:  # today: only games not started yet
+                    playing.append(value)
+                    break
+        total += sum(sorted(playing, reverse=True)[:slots])
+    return total

@@ -4,6 +4,7 @@
   "espn_s2": "",
   "swid": "",
   "my_team_id": null,
+  "anthropic_api_key": "",
   "thresholds": {
     "trend_pct": 0.25,
     "min_games": 5,

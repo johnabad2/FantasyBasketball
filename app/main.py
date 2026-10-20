@@ -30,6 +30,7 @@ ME_BG = "#e3eefc"
 RED = "#c62828"
 AMBER = "#b26a00"
 GREEN = "#2e7d32"
+EXAMPLES = ['Is Hartenstein worth it over Turner?', 'Who should I pick up this week?', 'Is Pippen for Suggs a good trade for me?', 'Who on my team is underperforming?']
 PRIORITY = {1: ("DO NOW", RED), 2: ("CONSIDER", AMBER), 3: ("FYI", "#555555")}
 AUTO_REFRESH_MIN = 15
 PHOTO_W, PHOTO_H = 300, 218  # ESPN headshots are 600x436; shown at half size
@@ -207,6 +208,7 @@ class App(tk.Tk):
         self.compare_tab = self._compare_tab()
         self.news_tab = self._news_tab()
         self._activity_tab()
+        self.ask_tab = self._ask_tab()
 
     def _tab(self, title):
         f = ttk.Frame(self.tabs, padding=10)
@@ -558,6 +560,48 @@ class App(tk.Tk):
         self._news_ids = []
         return f
 
+    def _ask_tab(self):
+        f = self._tab("Ask AI")
+        ttk.Label(f, text="Ask anything about your league", font=(FONT[0], 12, "bold")).pack(anchor="w")
+        ttk.Label(f, text="Claude looks up your league's live data (stats, projections, schedules, injuries, the "
+                          "Trade Lab math) and answers. It can only look - it never changes anything on ESPN. "
+                          "Each answer shows roughly what it cost.", style="Sub.TLabel", wraplength=1800
+                  ).pack(anchor="w", pady=(0, 6))
+        box_frame = ttk.Frame(f)
+        box_frame.pack(fill="both", expand=True)
+        self.ask_log = tk.Text(box_frame, height=12, wrap="word", relief="flat", padx=14, pady=12, background="white",
+                               font=(FONT[0], 11), cursor="arrow", state="disabled")
+        bar = ttk.Scrollbar(box_frame, orient="vertical", command=self.ask_log.yview)
+        self.ask_log.configure(yscrollcommand=bar.set)
+        self.ask_log.pack(side="left", fill="both", expand=True)
+        bar.pack(side="right", fill="y")
+        self.ask_log.tag_configure("you", foreground=ACCENT, font=(FONT[0], 11, "bold"), spacing1=10)
+        self.ask_log.tag_configure("ai", spacing1=4, spacing3=4, lmargin1=8, lmargin2=8)
+        self.ask_log.tag_configure("bold", font=(FONT[0], 11, "bold"))
+        self.ask_log.tag_configure("meta", foreground="#888888", font=(FONT[0], 9), spacing3=8, lmargin1=8)
+        self.ask_log.tag_configure("error", foreground=RED, lmargin1=8, lmargin2=8, spacing3=8)
+
+        examples = ttk.Frame(f)
+        examples.pack(fill="x", pady=(8, 4))
+        ttk.Label(examples, text="Try:", style="Sub.TLabel").pack(side="left")
+        for q in EXAMPLES:
+            ttk.Button(examples, text=q, command=lambda q=q: self._ask_fill(q)).pack(side="left", padx=(6, 0))
+
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=(4, 0))
+        self.ask_input = tk.Text(row, height=3, wrap="word", font=(FONT[0], 11), relief="solid", borderwidth=1)
+        self.ask_input.pack(side="left", fill="x", expand=True)
+        self.ask_input.bind("<Return>", self._ask_enter)
+        buttons = ttk.Frame(row)
+        buttons.pack(side="left", padx=(8, 0), fill="y")
+        self.ask_btn = ttk.Button(buttons, text="Ask", style="Accent.TButton", command=self.ask_send)
+        self.ask_btn.pack(fill="x")
+        ttk.Button(buttons, text="New chat", command=self._ask_reset).pack(fill="x", pady=(6, 0))
+        self.ask_status = tk.StringVar(value="Enter to send, Shift+Enter for a new line.")
+        ttk.Label(f, textvariable=self.ask_status, style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
+        self._advisor, self._ask_busy, self._ask_spent = None, False, 0.0
+        return f
+
     def _activity_tab(self):
         f = self._tab("Activity")
         self.activity = Table(f, ("when", "team", "move", "player"),
@@ -664,6 +708,8 @@ class App(tk.Tk):
         self._fill_trade_lab()
         self._fill_week()
         self._fill_news()
+        if getattr(self, "_advisor", None):
+            self._advisor.data = d  # answers use the freshest data
         names = [t.team_name for t in sorted(league.teams, key=lambda t: -t.points_for)]
         current = self.team_pick.get()
         self.team_pick["values"] = names
@@ -916,6 +962,115 @@ class App(tk.Tk):
             stat = self.breakdown.tree.item(sel[0], "values")[0]
             if stat in gamelog.CHART_STATS:
                 self.chart_stat.set(stat)
+
+    # ------------------------------------------------------------ ask AI
+
+    def _ask_fill(self, text):
+        self.ask_input.delete("1.0", "end")
+        self.ask_input.insert("1.0", text)
+        self.ask_input.focus_set()
+
+    def _ask_enter(self, event):
+        if event.state & 0x1:  # Shift+Enter: new line
+            return None
+        self.ask_send()
+        return "break"
+
+    def _ask_write(self, text, tag):
+        """Append to the transcript; **bold** in answers becomes real bold."""
+        log = self.ask_log
+        log.configure(state="normal")
+        if tag == "ai":
+            for i, part in enumerate(re.split(r"\*\*(.+?)\*\*", text)):
+                log.insert("end", part, ("ai", "bold") if i % 2 else "ai")
+            log.insert("end", "\n", "ai")
+        else:
+            log.insert("end", text + "\n", tag)
+        log.configure(state="disabled")
+        log.see("end")
+
+    def _ask_key(self):
+        """The Claude API key from config.json, or None to let the SDK use ANTHROPIC_API_KEY / a login profile."""
+        import os
+        key = ((self.data or {}).get("cfg") or {}).get("anthropic_api_key") or None
+        if not key and not os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+            return False
+        return key
+
+    def _ask_reset(self):
+        if self._advisor:
+            self._advisor.reset()
+        self.ask_log.configure(state="normal")
+        self.ask_log.delete("1.0", "end")
+        self.ask_log.configure(state="disabled")
+        self.ask_status.set("New chat started. Enter to send, Shift+Enter for a new line.")
+
+    def ask_send(self):
+        question = self.ask_input.get("1.0", "end").strip()
+        if not question or self._ask_busy:
+            return
+        if not self.data:
+            self.ask_status.set("Still loading your league - try again in a moment.")
+            return
+        key = self._ask_key()
+        if key is False:
+            self._ask_write("Set up needed: the Ask tab uses a Claude API key.", "error")
+            self._ask_write("1. Go to console.anthropic.com, sign in, add a little credit under Billing "
+                            "(pay-as-you-go, separate from a Claude subscription), then create a key under API Keys.\n"
+                            "2. Open config\\config.json and add a line:  \"anthropic_api_key\": \"sk-ant-...\",\n"
+                            "3. Click Refresh, then ask again. The key stays on your PC (config.json is never uploaded).",
+                            "ai")
+            return
+        try:
+            import assistant
+        except ImportError:
+            self._ask_write("The Claude library isn't installed. Run:  .venv\\Scripts\\pip install -r config\\requirements.txt",
+                            "error")
+            return
+        if self._advisor is None:
+            self._advisor = assistant.Advisor(key or None, self.data)
+        self._advisor.data = self.data
+        self.ask_input.delete("1.0", "end")
+        self._ask_write(question, "you")
+        self._ask_busy = True
+        self.ask_btn.state(["disabled"])
+        self.ask_status.set("Thinking...")
+        advisor = self._advisor
+
+        def worker():
+            import anthropic
+            try:
+                text, cost = advisor.ask(question, on_step=lambda s: self.jobs.put((self.ask_status.set, s + "...")))
+                self.jobs.put((self._ask_done, (text, cost, None)))
+            except anthropic.AuthenticationError:
+                self.jobs.put((self._ask_done, (None, 0, "Your API key was rejected. Check anthropic_api_key in "
+                                                         "config\\config.json, then click Refresh.")))
+            except anthropic.PermissionDeniedError:
+                self.jobs.put((self._ask_done, (None, 0, "Your API key isn't allowed to use this model - check "
+                                                         "your account on console.anthropic.com.")))
+            except anthropic.RateLimitError:
+                self.jobs.put((self._ask_done, (None, 0, "Too many requests (or no credit left). Wait a minute and "
+                                                         "check your balance on console.anthropic.com.")))
+            except anthropic.APIConnectionError:
+                self.jobs.put((self._ask_done, (None, 0, "Couldn't reach Claude - check your internet connection.")))
+            except anthropic.APIStatusError as e:
+                self.jobs.put((self._ask_done, (None, 0, f"Claude returned an error ({e.status_code}): {e.message}")))
+            except Exception as e:
+                self.jobs.put((self._ask_done, (None, 0, f"Something went wrong: {type(e).__name__}: {e}")))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ask_done(self, result):
+        text, cost, error = result
+        self._ask_busy = False
+        self.ask_btn.state(["!disabled"])
+        if error:
+            self._ask_write(error, "error")
+            self.ask_status.set("Enter to send, Shift+Enter for a new line.")
+            return
+        self._ask_spent += cost
+        self._ask_write(text, "ai")
+        self._ask_write(f"about ${cost:.3f} for this answer  ·  ${self._ask_spent:.2f} this session", "meta")
+        self.ask_status.set("Ask a follow-up, or click New chat to start over.")
 
     # ------------------------------------------------------------ week ahead / news
 

@@ -213,6 +213,25 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
     return sorted(out, key=lambda x: -x["gain"])[:top]
 
 
+def swap_value(league, team, add, drop, injuries, days=7):
+    """What adding `add` and dropping `drop` (None = open spot) does to `team`: points over the next
+    `days` days (best lineup each day) and over the rest of the season after that (games left x base)."""
+    roster = list(team.roster)
+    values = {p.playerId: form_of(p, league.year).baseline for p in roster}
+    add_base = form_of(add, league.year).baseline
+    base_week = week(league, roster, values, injuries, days)
+    trial = [p for p in roster if drop is None or p.playerId != drop.playerId] + [add]
+    new_week = week(league, trial, {**values, add.playerId: add_base}, injuries, days)
+    after = (base_week[-1]["day"] + 1) if base_week else (getattr(league, "current_week", 1) or 1)
+    add_games = games_after(league, add, after, injuries)
+    drop_games = games_after(league, drop, after, injuries) if drop else 0
+    drop_base = values[drop.playerId] if drop else 0.0
+    return {"this_week": sum(d["points"] for d in new_week) - sum(d["points"] for d in base_week),
+            "rest_of_season": add_base * add_games - drop_base * drop_games,
+            "add_base": add_base, "drop_base": drop_base, "add_games_after": add_games,
+            "drop_games_after": drop_games, "days": days}
+
+
 def today_moves(league, team, injuries):
     """Best lineup for the rest of today vs the current one. Players whose game has started are
     locked where they are. Returns {current, best, start: [(player, slot)], bench: [player],

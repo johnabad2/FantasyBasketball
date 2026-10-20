@@ -147,6 +147,9 @@ def verdict(result):
     a, b = result["a"], result["b"]
     if not result["sent"] and not result["got"]:
         return "Tick players on both sides to build a trade."
+    if abs(a["delta"]) < 0.05 and abs(b["delta"]) < 0.05:
+        return ("Neither starting lineup changes: these are bench players for both teams. They only score "
+                "on days a starter has no game, so check the season totals.")
     if a["delta"] <= 0 and b["delta"] <= 0:
         return "Both lineups get worse. Nobody should take this."
     if a["delta"] <= 0:
