@@ -33,23 +33,60 @@ def table(rows, headers):
         print(line(r))
 
 
-def live_points(league):
-    """{fantasy team id: season points including games still in progress}. ESPN only adds a day's
-    points to the standings once the day is over; the matchup's live total has them as they happen.
-    Falls back to the standings points if ESPN can't be reached (or in the demo)."""
-    live = {t.team_id: t.points_for for t in league.teams}
+def season_scores(league):
+    """{fantasy team id: (season points including games in progress, {scoring day: points})}.
+    ESPN only adds a day's points to the standings once the day is over; the matchup's live total
+    has them as they happen, so today's points = live total minus the finished days. Falls back to
+    the standings points (no daily breakdown) if ESPN can't be reached, or in the demo."""
+    out = {t.team_id: (t.points_for, {}) for t in league.teams}
     if not getattr(league, "pro_schedule", None):
-        return live
+        return out
     try:
         data = league.espn_request.league_get(params={"view": ["mMatchupScore", "mLiveScoring"]})
     except Exception:
-        return live
+        return out
+    today = getattr(league, "current_week", 1) or 1
     for matchup in data.get("schedule", []):
         for side in matchup.get("teams", []):
-            pts = side.get("totalPointsLive")
-            if side.get("teamId") in live and pts is not None:
-                live[side["teamId"]] = max(live[side["teamId"]], pts)
-    return live
+            tid = side.get("teamId")
+            if tid not in out:
+                continue
+            days = {int(d): pts for d, pts in (side.get("pointsByScoringPeriod") or {}).items() if int(d) < today}
+            live = max(out[tid][0], side.get("totalPointsLive") or 0)
+            days[today] = max(live - sum(days.values()), 0)
+            out[tid] = (live, days)
+    return out
+
+
+def live_points(league, scores=None):
+    """{fantasy team id: season points including games still in progress}."""
+    return {tid: live for tid, (live, _) in (scores or season_scores(league)).items()}
+
+
+def weekly_standings(league, scores=None):
+    """[{week, start, end, totals: {team id: points by the end of that week}, gained: {team id:
+    points that week}, ranks: {team id: 1 = first}}], one per week so far (Monday to Sunday; the
+    current week counts up to now)."""
+    from datetime import timedelta
+    scores = scores or season_scores(league)
+    today = getattr(league, "current_week", 1) or 1
+    day_date = lambda d: date.today() + timedelta(days=d - today)
+    weeks = {}  # monday -> {team id: points}
+    for tid, (_, days) in scores.items():
+        for d, pts in days.items():
+            monday = day_date(d) - timedelta(days=day_date(d).weekday())
+            weeks.setdefault(monday, {}).setdefault(tid, 0.0)
+            weeks[monday][tid] += pts
+    out, running = [], {tid: 0.0 for tid in scores}
+    first_day = day_date(1)
+    for n, monday in enumerate(sorted(weeks), 1):
+        gained = {tid: weeks[monday].get(tid, 0.0) for tid in scores}
+        running = {tid: running[tid] + gained[tid] for tid in scores}
+        order = sorted(scores, key=lambda tid: -running[tid])
+        ranks = {tid: 1 + sum(running[o] > running[tid] for o in order) for tid in order}  # ties share a rank
+        out.append({"week": n, "start": max(monday, first_day), "end": min(monday + timedelta(days=6), date.today()),
+                    "totals": dict(running), "gained": gained, "ranks": ranks})
+    return out
 
 
 def owner_names(team):

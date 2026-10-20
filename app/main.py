@@ -16,6 +16,7 @@ import fantasy
 import chat
 import feed
 from activity import ActivityFeed
+from rank_chart import RankChart
 import gamelog
 import lineup
 import news
@@ -369,10 +370,12 @@ class App(tk.Tk):
         self.standings = Table(f, ("team", "owner", "points", "behind", "change", "proj final", "proj rank"),
                                text_cols=("team", "owner"), wide=("team", "owner"), height=10,
                                on_open=lambda v: self.show_team(v[0]))
-        self.standings.pack(fill="both", expand=True)
+        self.standings.pack(fill="x")
         ttk.Label(f, text="Points include games in progress.  ·  Double-click a team to see its roster.  ·  "
                           "proj final = projected season total.",
                   style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
+        self.rank_chart = RankChart(f, height=360)
+        self.rank_chart.pack(fill="both", expand=True, pady=(10, 0))
 
     def _my_team_tab(self):
         f = self._tab("My Team")
@@ -785,14 +788,15 @@ class App(tk.Tk):
         analysis = fantasy.analyze(league, me, fa_count=100)
         mine, others, fas = analysis
         projected = projections.projected_final(league)
-        live = stats.live_points(league)
+        scores = stats.season_scores(league)
+        live, weekly = stats.live_points(league, scores), stats.weekly_standings(league, scores)
         real = bool(getattr(league, "pro_schedule", None))
         injuries = news.injuries() if real else {}
         values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in me.roster}
         plan = dict(week=planner.week(league, me.roster, values, injuries) if real else [],
                     moves=planner.today_moves(league, me, injuries),
                     streamers=planner.streamers(league, me, fas, injuries))
-        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected, live=live,
+        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected, live=live, weekly=weekly,
                     injuries=injuries, plan=plan,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
@@ -842,6 +846,8 @@ class App(tk.Tk):
                          f"#{proj_rank[t.team_id]}" if t.team_id in proj_rank else "-"))
             tags.append(("me",) if t.team_id == d["me"].team_id else ())
         self.standings.set_rows(rows, tags)
+        self.rank_chart.show(d.get("weekly") or [], {t.team_id: t.team_name for t in d["league"].teams},
+                             d["me"].team_id)
 
     def _fill_my_team(self):
         d = self.data

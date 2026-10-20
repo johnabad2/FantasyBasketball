@@ -31,7 +31,7 @@ its config and data from its own location.
 
 Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`). Tabs:
 
-- **Standings** (points update live while games are on, ranked automatically), **My Team** (alerts + roster form). The roster shows whether each player is
+- **Standings** (points update live while games are on, ranked automatically; below it a week-by-week rank chart with your team highlighted - hover a week for that week's table), **My Team** (alerts + roster form). The roster shows whether each player is
   **in your lineup or on your bench**, **their NBA game today** (your local time), and their
   **NBA role**: how many of their last 5 games they started, from ESPN box scores (preseason
   until the regular season has games). If a bench player plays today and a starter doesn't,
