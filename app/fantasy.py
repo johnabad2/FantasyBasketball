@@ -471,11 +471,13 @@ def cmd_standings(league, cfg):
     if season_points_league(league):
         # Whole season is one scoring period: total points is the standings.
         import projections
-        teams = sorted(league.teams, key=lambda t: -t.points_for)
-        lead = teams[0].points_for
+        from stats import live_points
+        live = live_points(league)  # includes games in progress
+        teams = sorted(league.teams, key=lambda t: -live[t.team_id])
+        lead = live[teams[0].team_id]
         proj = projections.projected_final(league) or {}
         rows = [(i, tm.team_name + (" *" if tm.team_id == me else ""), owner_names(tm),
-                 f"{tm.points_for:.1f}", f"{lead - tm.points_for:.1f}" if i > 1 else "-",
+                 f"{live[tm.team_id]:.1f}", f"{lead - live[tm.team_id]:.1f}" if i > 1 else "-",
                  f"{proj[tm.team_id][2]:,.0f}" if tm.team_id in proj else "-")
                 for i, tm in enumerate(teams, 1)]
         table(rows, ("#", "team", "owner", "points", "behind", "proj final"))

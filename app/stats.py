@@ -33,6 +33,25 @@ def table(rows, headers):
         print(line(r))
 
 
+def live_points(league):
+    """{fantasy team id: season points including games still in progress}. ESPN only adds a day's
+    points to the standings once the day is over; the matchup's live total has them as they happen.
+    Falls back to the standings points if ESPN can't be reached (or in the demo)."""
+    live = {t.team_id: t.points_for for t in league.teams}
+    if not getattr(league, "pro_schedule", None):
+        return live
+    try:
+        data = league.espn_request.league_get(params={"view": ["mMatchupScore", "mLiveScoring"]})
+    except Exception:
+        return live
+    for matchup in data.get("schedule", []):
+        for side in matchup.get("teams", []):
+            pts = side.get("totalPointsLive")
+            if side.get("teamId") in live and pts is not None:
+                live[side["teamId"]] = max(live[side["teamId"]], pts)
+    return live
+
+
 def owner_names(team):
     return ", ".join(
         f"{o.get('firstName', '')} {o.get('lastName', '')}".strip() if isinstance(o, dict) else str(o)

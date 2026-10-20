@@ -366,11 +366,12 @@ class App(tk.Tk):
 
     def _standings_tab(self):
         f = self._tab("Standings")
-        self.standings = Table(f, ("#", "team", "owner", "points", "behind", "change", "proj final", "proj rank"),
+        self.standings = Table(f, ("team", "owner", "points", "behind", "change", "proj final", "proj rank"),
                                text_cols=("team", "owner"), wide=("team", "owner"), height=10,
-                               on_open=lambda v: self.show_team(v[1]))
+                               on_open=lambda v: self.show_team(v[0]))
         self.standings.pack(fill="both", expand=True)
-        ttk.Label(f, text="Double-click a team to see its roster.  ·  proj final = projected season total.",
+        ttk.Label(f, text="Points include games in progress.  ·  Double-click a team to see its roster.  ·  "
+                          "proj final = projected season total.",
                   style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
 
     def _my_team_tab(self):
@@ -784,13 +785,14 @@ class App(tk.Tk):
         analysis = fantasy.analyze(league, me, fa_count=100)
         mine, others, fas = analysis
         projected = projections.projected_final(league)
+        live = stats.live_points(league)
         real = bool(getattr(league, "pro_schedule", None))
         injuries = news.injuries() if real else {}
         values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in me.roster}
         plan = dict(week=planner.week(league, me.roster, values, injuries) if real else [],
                     moves=planner.today_moves(league, me, injuries),
                     streamers=planner.streamers(league, me, fas, injuries))
-        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected,
+        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected, live=live,
                     injuries=injuries, plan=plan,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
@@ -813,25 +815,30 @@ class App(tk.Tk):
         self._fill_trade_lab()
         self._fill_week()
         self._fill_news()
-        names = [t.team_name for t in sorted(league.teams, key=lambda t: -t.points_for)]
+        names = [t.team_name for t in sorted(league.teams, key=lambda t: -self._pts(t))]
         current = self.team_pick.get()
         self.team_pick["values"] = names
         self.team_pick.set(current if current in names else d["me"].team_name)
         self._fill_league()
         self._fill_activity()
 
+    def _pts(self, team):
+        """Season points including games in progress."""
+        return (self.data.get("live") or {}).get(team.team_id, team.points_for)
+
     def _fill_standings(self):
         d = self.data
-        teams = sorted(d["league"].teams, key=lambda t: -t.points_for)
-        lead = teams[0].points_for if teams else 0
+        teams = sorted(d["league"].teams, key=lambda t: -self._pts(t))
+        lead = self._pts(teams[0]) if teams else 0
         proj = d.get("projected") or {}
         proj_rank = {tid: r for r, tid in enumerate(sorted(proj, key=lambda k: -proj[k][2]), 1)}
         rows, tags = [], []
         for i, t in enumerate(teams, 1):
-            change = f"{t.points_for - d['prev'][t.team_id]:+.1f}" if t.team_id in d["prev"] else "-"
+            pts = self._pts(t)
+            change = f"{pts - d['prev'][t.team_id]:+.1f}" if t.team_id in d["prev"] else "-"
             final = f"{proj[t.team_id][2]:,.0f}" if t.team_id in proj else "-"
-            rows.append((i, t.team_name, owner_names(t), f"{t.points_for:.1f}",
-                         f"{lead - t.points_for:.1f}" if i > 1 else "-", change, final,
+            rows.append((t.team_name, owner_names(t), f"{pts:.1f}",
+                         f"{lead - pts:.1f}" if i > 1 else "-", change, final,
                          f"#{proj_rank[t.team_id]}" if t.team_id in proj_rank else "-"))
             tags.append(("me",) if t.team_id == d["me"].team_id else ())
         self.standings.set_rows(rows, tags)
@@ -839,14 +846,14 @@ class App(tk.Tk):
     def _fill_my_team(self):
         d = self.data
         me, year = d["me"], d["league"].year
-        rank = 1 + sum(t.points_for > me.points_for for t in d["league"].teams)
+        rank = 1 + sum(self._pts(t) > self._pts(me) for t in d["league"].teams)
         forms_all = [fantasy.form_of(p, year) for p in me.roster]
         today_pts = projections.today_points(d["league"], forms_all)
         lineup_today = sum(v for f in forms_all for v in [today_pts[f.player.playerId]]
                            if f.player.lineupSlot not in ("BE", "IR"))
         proj = (d.get("projected") or {}).get(me.team_id)
         extra = f"   ·   projected final {proj[2]:,.0f}" if proj else ""
-        self.my_title.set(f"{me.team_name}   ·   {me.points_for:.1f} pts   ·   #{rank} of {len(d['league'].teams)}"
+        self.my_title.set(f"{me.team_name}   ·   {self._pts(me):.1f} pts   ·   #{rank} of {len(d['league'].teams)}"
                           f"   ·   your lineup projects {lineup_today:.1f} pts today{extra}")
 
         self.alerts.configure(state="normal")
@@ -944,8 +951,8 @@ class App(tk.Tk):
         team = next((t for t in league.teams if t.team_name == self.team_pick.get()), d["me"])
         pick = self.split_pick.current()
         split_key = SPLITS[pick - 1] if pick > 0 else None
-        rank = 1 + sum(t.points_for > team.points_for for t in league.teams)
-        self.team_info.set(f"{team.team_name}  ({owner_names(team)})   ·   {team.points_for:.1f} pts   ·   #{rank}")
+        rank = 1 + sum(self._pts(t) > self._pts(team) for t in league.teams)
+        self.team_info.set(f"{team.team_name}  ({owner_names(team)})   ·   {self._pts(team):.1f} pts   ·   #{rank}")
         rows, tags = [], []
         for p in team.roster:
             season = split_of(p, year, "total")
