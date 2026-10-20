@@ -124,7 +124,16 @@ def nums(f):
     return f"season {f.baseline:.1f}, last 15 {f.recent:.1f}"
 
 
-def injury_alerts(mine):
+def _injury_note(f, injuries):
+    """ESPN's latest injury update and expected return, if any."""
+    info = (injuries or {}).get(f.player.playerId)
+    if not info:
+        return ""
+    back = f" Expected back {info['return_date']:%a %d %b}." if info["return_date"] else ""
+    return f"\n      ESPN: {info['comment']}{back}"
+
+
+def injury_alerts(mine, injuries=None):
     alerts = []
     for f in mine:
         slot = f.player.lineupSlot
@@ -133,11 +142,13 @@ def injury_alerts(mine):
                                 f"Bench {f.player.name}: {f.status.replace('_', ' ').lower()}",
                                 f"{fmt(f)} is in your {slot} slot but listed {f.status}. "
                                 "Swap in a healthy bench player"
-                                + (" or move them to IR." if f.status == "INJURY_RESERVE" else ".")))
+                                + (" or move them to IR." if f.status == "INJURY_RESERVE" else ".")
+                                + _injury_note(f, injuries)))
         elif f.status in SHAKY_STATUSES and slot not in BENCH_SLOTS:
             alerts.append(Alert(f"inj:{f.player.playerId}:{f.status}", 2,
                                 f"Check on {f.player.name}: {f.status.replace('_', ' ').lower()}",
-                                f"{fmt(f)} is starting at {slot}. Check news before lineups lock."))
+                                f"{fmt(f)} is starting at {slot}. Check news before lineups lock."
+                                + _injury_note(f, injuries)))
     return alerts
 
 
@@ -211,30 +222,65 @@ def trade_alerts(mine, others, t):
     ]
 
 
-def lineup_alerts(league, mine):
-    """Daily lineup check: a bench player who plays today should replace a starter who doesn't,
-    as long as he's eligible for that starter's slot."""
+def lineup_alerts(league, my_team, injuries):
+    """Today's best legal lineup vs the one you've set (games already started stay locked)."""
+    import planner
+    moves = planner.today_moves(league, my_team, injuries)
+    if not moves or moves["best"] - moves["current"] < 0.5 or not moves["start"]:
+        return []
     import lineup
     games = lineup.todays_games(league)
-    if not games:
-        return []
-    playing = lambda f: bool(lineup.game_today(league, f.player, games))
-    idle = sorted((f for f in mine if f.player.lineupSlot not in BENCH_SLOTS and not playing(f)),
-                  key=lambda f: f.worth)
-    ready = sorted((f for f in mine if f.player.lineupSlot == "BE" and playing(f) and f.healthy),
-                   key=lambda f: -f.worth)
+    starts = ", ".join(f"{p.name} at {slot} ({lineup.game_today(league, p, games)})" for p, slot in moves["start"])
+    benches = ", ".join(p.name for p in moves["bench"]) or "nobody"
+    moved = "".join(f"\n      Move {p.name} from {old} to {new}." for p, old, new in moves.get("moves", []))
     day = getattr(league, "current_week", "")
+    key = "lineup:%s:%s" % (day, ",".join(sorted(str(p.playerId) for p, _ in moves["start"])))
+    return [Alert(key, 1, f"Set your lineup: +{moves['best'] - moves['current']:.1f} pts today",
+                  f"Start {starts}.\n      Bench {benches}.{moved}\n      (Full lineup on the Week Ahead tab.)")]
+
+
+def status_alerts(mine, injuries):
+    """A player's ESPN status changed in the last day (e.g. ACTIVE -> OUT, or back from injury)."""
+    import news
     alerts = []
-    for f in ready:
-        slot_of = next((s for s in idle if s.player.lineupSlot in (f.player.eligibleSlots or [])), None)
-        if not slot_of:
-            continue
-        idle.remove(slot_of)
-        alerts.append(Alert(f"lineup:{day}:{f.player.playerId}", 1,
-                            f"Start {f.player.name} today instead of {slot_of.player.name}",
-                            f"{f.player.name} plays today ({lineup.game_today(league, f.player, games)}) but is on "
-                            f"your bench; {slot_of.player.name} in your {slot_of.player.lineupSlot} slot has no game."))
+    for p, old, new, _ in news.track_statuses([f.player for f in mine]):
+        f = next(x for x in mine if x.player is p)
+        pretty = lambda s: s.replace("_", " ").lower()
+        if new == "ACTIVE":
+            alerts.append(Alert(f"status:{p.playerId}:{old}:{new}", 2, f"{p.name} is back ({pretty(old)} -> active)",
+                                f"{fmt(f)} is cleared. Put him back in your lineup if he's on your bench or IR."))
+        else:
+            prio = 1 if new in OUT_STATUSES and p.lineupSlot not in BENCH_SLOTS else 2
+            alerts.append(Alert(f"status:{p.playerId}:{old}:{new}", prio,
+                                f"{p.name}: {pretty(old)} -> {pretty(new)}",
+                                f"{fmt(f)} has a new injury status." + _injury_note(f, injuries)))
     return alerts
+
+
+def ir_alerts(league, my_team, injuries):
+    """Out for a while and your IR slot is empty: park him there and use the roster spot."""
+    import planner
+    room = planner.open_ir_slots(league, my_team)
+    alerts = []
+    for p, back in planner.ir_candidates(league, my_team, injuries)[:room]:
+        when = f"back ~{back:%d %b}" if back else "no return date yet"
+        alerts.append(Alert(f"ir:{p.playerId}:{back}", 2, f"Move {p.name} to IR ({when})",
+                            f"Your IR slot is empty. Moving {p.name} there frees a roster spot, so you can "
+                            "add a streamer without dropping anyone (see Week Ahead)."))
+    return alerts
+
+
+def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
+    import planner
+    picks = planner.streamers(league, my_team, fas, injuries, top=1)
+    if not picks or picks[0]["gain"] < min_gain:
+        return []
+    s = picks[0]
+    how = f"move {s['drop'].name} to IR" if s["to_ir"] else f"drop {s['drop'].name}"
+    return [Alert(f"stream:{s['fa'].player.playerId}:{s['drop'].playerId}", 2,
+                  f"Stream {s['fa'].player.name}: +{s['gain']:.0f} pts over the next 7 days",
+                  f"Add {fmt(s['fa'])} and {how}. He plays {s['games']} games this week, "
+                  f"{s['light_games']} of them on days you have empty lineup slots.")]
 
 
 def analyze(league, my_team, fa_count=75):
@@ -248,10 +294,17 @@ def analyze(league, my_team, fa_count=75):
     return mine, others, fas
 
 
-def build_alerts(league, my_team, thresholds, analysis=None):
+def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
     mine, others, fas = analysis or analyze(league, my_team)
-    alerts = (injury_alerts(mine) + lineup_alerts(league, mine) + waiver_alerts(mine, fas, thresholds)
-              + trade_alerts(mine, others, thresholds) + form_alerts(mine, thresholds))
+    real = bool(getattr(league, "pro_schedule", None))  # the demo league has no schedule or ESPN ids
+    if injuries is None:
+        import news
+        injuries = news.injuries() if real else {}
+    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds)
+    if real:
+        alerts += (status_alerts(mine, injuries) + lineup_alerts(league, my_team, injuries)
+                   + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))
+    alerts += trade_alerts(mine, others, thresholds) + form_alerts(mine, thresholds)
     return sorted(alerts, key=lambda a: a.priority)
 
 

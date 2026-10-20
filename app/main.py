@@ -13,6 +13,8 @@ from tkinter import ttk
 import fantasy
 import gamelog
 import lineup
+import news
+import planner
 import projections
 import stats
 from chart import GameChart
@@ -187,12 +189,14 @@ class App(tk.Tk):
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self._standings_tab()
         self._my_team_tab()
+        self.week_tab = self._week_tab()
         self._free_agents_tab()
         self._trades_tab()
         self._trade_lab_tab()
         self.league_tab = self._league_tab()
         self.player_tab = self._player_tab()
         self.compare_tab = self._compare_tab()
+        self.news_tab = self._news_tab()
         self._activity_tab()
 
     def _tab(self, title):
@@ -468,6 +472,68 @@ class App(tk.Tk):
         self._cmp = None
         return f
 
+    def _week_tab(self):
+        f = self._tab("Week Ahead")
+        self.wk_today = tk.StringVar()
+        ttk.Label(f, textvariable=self.wk_today, font=(FONT[0], 12, "bold")).pack(anchor="w")
+        ttk.Label(f, text="Best legal lineup for the rest of today (positions respected; players whose game has "
+                          "started are locked). Make these changes on ESPN.", style="Sub.TLabel").pack(anchor="w")
+        top = ttk.Frame(f)
+        top.pack(fill="x", pady=(6, 10))
+        self.wk_lineup = Table(top, ("slot", "player", "game", "pts", "change"),
+                               text_cols=("slot", "player", "game", "change"), wide=("player",),
+                               widths={"slot": 60, "game": 170, "pts": 70, "change": 230}, height=10,
+                               on_open=lambda v: self.show_player(v[1]) if v[1] else None)
+        self.wk_lineup.pack(side="left", fill="both", expand=True)
+        days = ttk.Frame(top)
+        days.pack(side="left", fill="both", expand=True, padx=(14, 0))
+        ttk.Label(days, text="Next 7 days: lineup slots you'll fill", font=(FONT[0], 10, "bold")).pack(anchor="w")
+        self.wk_days = Table(days, ("day", "slots filled", "playing", "proj pts"), text_cols=("day", "slots filled"),
+                             widths={"day": 110, "slots filled": 300, "playing": 80, "proj pts": 90}, height=7)
+        self.wk_days.pack(fill="both", expand=True, pady=(4, 0))
+        self.wk_days_note = tk.StringVar()
+        ttk.Label(days, textvariable=self.wk_days_note, style="Sub.TLabel", wraplength=700).pack(anchor="w", pady=(4, 0))
+
+        ttk.Label(f, text="Streamers: free agents who'd add the most points over the next 7 days",
+                  font=(FONT[0], 10, "bold")).pack(anchor="w")
+        ttk.Label(f, text="Counts only games on days you'd actually start him. 'make room' = who leaves your active "
+                          "roster: an injured player to your empty IR slot first, otherwise your cheapest drop. "
+                          "No acquisition limit in your league.", style="Sub.TLabel").pack(anchor="w")
+        self.wk_streams = Table(f, ("add", "pos", "nba", "base", "games", "on light days", "gain (7 days)",
+                                    "make room"),
+                                text_cols=("add", "pos", "nba", "make room"), wide=("add", "make room"), height=8,
+                                on_open=lambda v: self.show_player(v[0]))
+        self.wk_streams.pack(fill="both", expand=True, pady=(4, 0))
+        return f
+
+    def _news_tab(self):
+        f = self._tab("News")
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Label(bar, text="Show").pack(side="left")
+        self.news_scope = ttk.Combobox(bar, state="readonly", width=34,
+                                       values=["My team", "Every rostered player", "Every injured NBA player"])
+        self.news_scope.current(0)
+        self.news_scope.pack(side="left", padx=6)
+        self.news_scope.bind("<<ComboboxSelected>>", lambda e: self._fill_news())
+        ttk.Label(bar, text="From ESPN's injury report. Click a player for the full note and latest news.",
+                  style="Sub.TLabel").pack(side="right")
+        self.news_table = Table(f, ("player", "fantasy team", "status", "injury", "back", "latest update"),
+                                text_cols=("player", "fantasy team", "status", "injury", "back", "latest update"),
+                                wide=("latest update",),
+                                widths={"player": 190, "fantasy team": 200, "status": 110, "injury": 110,
+                                        "back": 130}, height=12,
+                                on_open=lambda v: self.show_player(v[0]))
+        self.news_table.pack(fill="both", expand=True)
+        self.news_table.tree.bind("<<TreeviewSelect>>", self._news_selected)
+        self.news_detail = tk.Text(f, height=9, wrap="word", relief="flat", padx=12, pady=10, background="white",
+                                   font=FONT, cursor="arrow")
+        self.news_detail.pack(fill="x", pady=(8, 0))
+        self.news_detail.tag_configure("head", font=(FONT[0], 11, "bold"))
+        self.news_detail.tag_configure("muted", foreground="#777777")
+        self._news_ids = []
+        return f
+
     def _activity_tab(self):
         f = self._tab("Activity")
         self.activity = Table(f, ("when", "team", "move", "player"),
@@ -546,8 +612,15 @@ class App(tk.Tk):
         analysis = fantasy.analyze(league, me, fa_count=100)
         mine, others, fas = analysis
         projected = projections.projected_final(league)
+        real = bool(getattr(league, "pro_schedule", None))
+        injuries = news.injuries() if real else {}
+        values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in me.roster}
+        plan = dict(week=planner.week(league, me.roster, values, injuries) if real else [],
+                    moves=planner.today_moves(league, me, injuries),
+                    streamers=planner.streamers(league, me, fas, injuries))
         return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected,
-                    alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis),
+                    injuries=injuries, plan=plan,
+                    alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3),
                     activity=activity)
 
@@ -565,6 +638,8 @@ class App(tk.Tk):
         self._fill_free_agents()
         self._fill_trades()
         self._fill_trade_lab()
+        self._fill_week()
+        self._fill_news()
         names = [t.team_name for t in sorted(league.teams, key=lambda t: -t.points_for)]
         current = self.team_pick.get()
         self.team_pick["values"] = names
@@ -804,6 +879,137 @@ class App(tk.Tk):
             stat = self.breakdown.tree.item(sel[0], "values")[0]
             if stat in gamelog.CHART_STATS:
                 self.chart_stat.set(stat)
+
+    # ------------------------------------------------------------ week ahead / news
+
+    def _fill_week(self):
+        d = self.data
+        plan, league = d.get("plan") or {}, d["league"]
+        games = lineup.todays_games(league)
+        moves = plan.get("moves")
+        if not moves:
+            self.wk_today.set("No NBA schedule (demo mode).")
+            self.wk_lineup.set_rows([])
+        else:
+            gain = moves["best"] - moves["current"]
+            self.wk_today.set(f"Today: your lineup scores {moves['current']:.1f} pts  ->  best possible "
+                              f"{moves['best']:.1f}" + (f"  (+{gain:.1f}: make the changes below)" if gain >= 0.5
+                                                       else "  - already optimal"))
+            starting = {p.playerId for p in d["me"].roster if p.lineupSlot not in ("BE", "IR")}
+            rows, tags = [], []
+            for p in moves["locked"]:
+                rows.append((p.lineupSlot, p.name, lineup.game_today(league, p, games), f"{fantasy.form_of(p, league.year).baseline:.1f}",
+                             "locked (game started)"))
+                tags.append(())
+            for si, slot in enumerate(moves["slots"]):
+                c = moves["lineup"].get(si)
+                if not c:
+                    rows.append((slot, "", "", "", "empty (no game)"))
+                    tags.append(("cold",))
+                    continue
+                pl = c[1]
+                if pl.playerId not in starting:
+                    change, tag = "START (from bench)", ("hot",)
+                elif pl.lineupSlot != slot:
+                    change, tag = f"move from {pl.lineupSlot}", ()
+                else:
+                    change, tag = "keep", ()
+                rows.append((slot, pl.name, lineup.game_today(league, pl, games), f"{c[0]:.1f}", change))
+                tags.append(tag)
+            for pl in moves["bench"]:
+                rows.append(("BE", pl.name, lineup.game_today(league, pl, games) or "no game", "", "BENCH to make room"))
+                tags.append(("shaky",))
+            self.wk_lineup.set_rows(rows, tags)
+
+        week = plan.get("week") or []
+        rows, tags = [], []
+        for day in week:
+            bar = "\u2588" * day["filled"] + "\u2591" * (day["slots"] - day["filled"])
+            rows.append((f"{day['date']:%a %d %b}", f"{bar}  {day['filled']}/{day['slots']}", day["playing"],
+                         f"{day['points']:.0f}"))
+            tags.append(("cold",) if day["filled"] <= day["slots"] // 2 else ())
+        self.wk_days.set_rows(rows, tags)
+        light = [day for day in week if day["filled"] < day["slots"]]
+        empty = sum(day["slots"] - day["filled"] for day in week)
+        self.wk_days_note.set(f"{empty} empty slot-days this week. Red = half your lineup or more is empty: "
+                              "that's where streamers earn points." if week else "")
+
+        rows = []
+        for s in plan.get("streamers") or []:
+            fa = s["fa"]
+            room = f"IR: {s['drop'].name}" if s["to_ir"] else f"drop {s['drop'].name}"
+            rows.append((fa.player.name, fa.player.position, fa.player.proTeam, f"{fa.baseline:.1f}", s["games"],
+                         s["light_games"], f"+{s['gain']:.0f}", room))
+        self.wk_streams.set_rows(rows or [("No free agent adds points this week.", "", "", "", "", "", "", "")])
+
+    def _fill_news(self):
+        d = self.data
+        injuries, league = d.get("injuries") or {}, d["league"]
+        owner = {p.playerId: (p, t) for t in league.teams for p in t.roster}
+        scope = self.news_scope.current()
+        if scope == 0:
+            ids = [p.playerId for p in d["me"].roster]
+        elif scope == 1:
+            ids = list(owner)
+        else:
+            ids = list(injuries)
+        rows, tags, self._news_ids = [], [], []
+        for pid in ids:
+            info = injuries.get(pid)
+            pl, team = owner.get(pid, (None, None))
+            if scope != 0 and not info:
+                continue  # wider views list injured players only
+            name = pl.name if pl else (info or {}).get("name", "?")
+            status = (info or {}).get("status") or (status_text(pl) if pl else "")
+            back = info["return_date"].strftime("%a %d %b") if info and info["return_date"] else "-"
+            rows.append((name, team.team_name if team else "free agent", status, (info or {}).get("injury", "") or "-",
+                         back, (info or {}).get("comment", "") or "healthy: no injury report"))
+            tags.append(("me",) if team and team.team_id == d["me"].team_id and scope else
+                        (("out",) if status.lower() == "out" else ("shaky",) if info else ()))
+            self._news_ids.append(pid)
+        self.news_table.set_rows(rows, tags, [str(i) for i in range(len(rows))])
+        self.news_detail.configure(state="normal")
+        self.news_detail.delete("1.0", "end")
+        self.news_detail.insert("end", "Click a player to see ESPN's full injury note and latest news.", "muted")
+        self.news_detail.configure(state="disabled")
+
+    def _news_selected(self, _event):
+        sel = self.news_table.tree.selection()
+        if not sel or not sel[0].isdigit() or int(sel[0]) >= len(self._news_ids):
+            return
+        pid = self._news_ids[int(sel[0])]
+        info = (self.data.get("injuries") or {}).get(pid)
+        name = self.news_table.tree.item(sel[0], "values")[0]
+        txt = self.news_detail
+        txt.configure(state="normal")
+        txt.delete("1.0", "end")
+        txt.insert("end", name + "\n", "head")
+        if info:
+            txt.insert("end", f"{info['status']} - {info['injury'] or 'injury'}"
+                              + (f", expected back {info['return_date']:%a %d %b}" if info["return_date"] else "")
+                              + "\n" + info["comment"] + "\n" + (info["details"] or "") + "\n\n")
+        txt.insert("end", "Loading latest news...", "muted")
+        txt.configure(state="disabled")
+        if not self.demo:
+            self.run(lambda: (pid, news.player_news(pid)), self._news_loaded)
+
+    def _news_loaded(self, result):
+        pid, items = result
+        sel = self.news_table.tree.selection()
+        if not sel or not sel[0].isdigit() or self._news_ids[int(sel[0])] != pid:
+            return  # a different player was clicked meanwhile
+        txt = self.news_detail
+        txt.configure(state="normal")
+        txt.delete("end-1c linestart", "end")
+        if not items:
+            txt.insert("end", "No recent news.", "muted")
+        for it in items:
+            when = f"{it['published']:%a %d %b %H:%M}  " if it["published"] else ""
+            txt.insert("end", when, "muted")
+            txt.insert("end", it["headline"] + "\n")
+            if it["story"]:
+                txt.insert("end", it["story"] + "\n\n", "muted")
+        txt.configure(state="disabled")
 
     # ------------------------------------------------------------ trade lab
 

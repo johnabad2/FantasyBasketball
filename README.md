@@ -36,6 +36,13 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   **NBA role**: how many of their last 5 games they started, from ESPN box scores (preseason
   until the regular season has games). If a bench player plays today and a starter doesn't,
   you get a "Start X instead of Y" alert
+- **Week Ahead**: today's **best legal lineup** (respects positions, locks players whose game has
+  started) with exactly what to change on ESPN; the **next 7 days** showing how many of your 10
+  slots you'll fill each day; and **streamers**: free agents ranked by how many points they'd add
+  this week, counting only games on days you'd actually start them, and who to make room with
+  (an injured player to your empty IR slot first, otherwise your cheapest drop)
+- **News**: ESPN's injury report for your team, every rostered player or every injured NBA
+  player, with expected return dates; click a player for the full note and latest news
 - **Free Agents**: the top 100 available players; green ones beat your weakest player
 - **Trades**: up to 3 trade ideas per team, best gain first
 - **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
@@ -114,7 +121,10 @@ The alerts:
 | Alert | Fires when |
 |---|---|
 | Bench X (do now) | A starter is OUT, on IR, or suspended |
-| Start X instead of Y (do now) | A bench player has a game today, a starter in a slot he can fill doesn't |
+| Set your lineup (do now) | Your best legal lineup today scores more than the one you've set |
+| Status change | One of your players went e.g. active -> out, or is back (alerts for a day) |
+| Move X to IR | He's out beyond this week and your IR slot is empty |
+| Stream X | A free agent would add 15+ points over the next 7 days |
 | Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Sell high | Your player is 25%+ above their base right now |
