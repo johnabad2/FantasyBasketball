@@ -174,15 +174,15 @@ def waiver_alerts(mine, free_agents, t):
     return alerts
 
 
-def trade_alerts(mine, others, t):
-    """Pair one of your players with one of theirs where:
+def trade_ideas(mine, others, t, per_team=1):
+    """[(team, gain, give, get)], best first. Pairs one of your players with one of theirs where:
     - their player is better on baseline (you gain real value), and
     - their player's recent form is no better than yours (the deal looks fair to them).
     The classic version: sell your hot player, buy their slumping star.
     """
     ideas = []
     for team, roster in others:
-        best = None
+        found = []
         for give in mine:
             if give.games < t["min_games"] or not give.healthy:
                 continue
@@ -194,11 +194,13 @@ def trade_alerts(mine, others, t):
                     continue
                 if get.recent > give.recent * 1.05:
                     continue  # they'd be giving up the hotter player; unlikely to accept
-                if best is None or gain > best[0]:
-                    best = (gain, give, get)
-        if best:
-            ideas.append((team, *best))
-    ideas.sort(key=lambda x: x[1], reverse=True)
+                found.append((team, gain, give, get))
+        ideas += sorted(found, key=lambda x: -x[1])[:per_team]
+    return sorted(ideas, key=lambda x: -x[1])
+
+
+def trade_alerts(mine, others, t):
+    ideas = trade_ideas(mine, others, t)
     return [
         Alert(f"trade:{team.team_id}:{give.player.playerId}:{get.player.playerId}", 2,
               f"Trade idea with {team.team_name}: {give.player.name} for {get.player.name}",
@@ -209,13 +211,19 @@ def trade_alerts(mine, others, t):
     ]
 
 
-def build_alerts(league, my_team, thresholds):
+def analyze(league, my_team, fa_count=75):
+    """Form for your roster, every other roster, and the free-agent pool."""
     year = league.year
     mine = [form_of(p, year) for p in my_team.roster]
     others = [(tm, [form_of(p, year) for p in tm.roster])
               for tm in league.teams if tm.team_id != my_team.team_id]
     # proTeam "FA" means unsigned in the NBA: no games, no points.
-    fas = [form_of(p, year) for p in league.free_agents(size=75) if p.proTeam != "FA"]
+    fas = [form_of(p, year) for p in league.free_agents(size=fa_count) if p.proTeam != "FA"]
+    return mine, others, fas
+
+
+def build_alerts(league, my_team, thresholds, analysis=None):
+    mine, others, fas = analysis or analyze(league, my_team)
     alerts = (injury_alerts(mine) + waiver_alerts(mine, fas, thresholds)
               + trade_alerts(mine, others, thresholds) + form_alerts(mine, thresholds))
     return sorted(alerts, key=lambda a: a.priority)

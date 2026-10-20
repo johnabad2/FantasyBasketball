@@ -21,6 +21,33 @@ RED = "#c62828"
 AMBER = "#b26a00"
 GREEN = "#2e7d32"
 PRIORITY = {1: ("DO NOW", RED), 2: ("CONSIDER", AMBER), 3: ("FYI", "#555555")}
+AUTO_REFRESH_MIN = 15
+PHOTO_W, PHOTO_H = 300, 218  # ESPN headshots are 600x436; shown at half size
+HEADSHOTS = stats.DATA / "headshots"
+
+
+def headshot(player_id):
+    """Path to the player's ESPN headshot, downloaded once and cached. None if ESPN has no photo."""
+    import urllib.error
+    import urllib.request
+    path = HEADSHOTS / f"{int(player_id)}.png"
+    missing = path.with_suffix(".none")
+    if path.exists():
+        return path
+    if missing.exists():
+        return None
+    HEADSHOTS.mkdir(parents=True, exist_ok=True)
+    url = f"https://a.espncdn.com/i/headshots/nba/players/full/{int(player_id)}.png"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as r:
+            path.write_bytes(r.read())
+        return path
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            missing.touch()  # remember, so we don't ask ESPN again every time
+        return None
+    except OSError:  # offline / timeout: no photo this time, try again next time
+        return None
 
 
 def status_text(p):
@@ -136,8 +163,10 @@ class App(tk.Tk):
         self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self._standings_tab()
         self._my_team_tab()
-        self._league_tab()
-        self._player_tab()
+        self._free_agents_tab()
+        self._trades_tab()
+        self.league_tab = self._league_tab()
+        self.player_tab = self._player_tab()
         self._activity_tab()
 
     def _tab(self, title):
@@ -197,6 +226,32 @@ class App(tk.Tk):
         self.league_roster.pack(fill="both", expand=True)
         ttk.Label(f, text="* no games yet: numbers are ESPN's projection. Double-click a player for details.",
                   style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
+        return f
+
+    def _free_agents_tab(self):
+        f = self._tab("Free Agents")
+        self.fa_head = tk.StringVar()
+        ttk.Label(f, textvariable=self.fa_head, font=(FONT[0], 12, "bold")).pack(anchor="w")
+        ttk.Label(f, text="Green = better than one of your players right now (worth = average of base and L15)."
+                          " Double-click for details.", style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
+        self.free_agents = Table(f, ("player", "pos", "nba", "status", "gp", "base", "L15", "trend",
+                                     "worth", "drop for them", "gain"),
+                                 text_cols=("player", "pos", "nba", "status", "drop for them"),
+                                 wide=("player", "drop for them"), on_open=lambda v: self.show_player(v[0]))
+        self.free_agents.pack(fill="both", expand=True)
+
+    def _trades_tab(self):
+        f = self._tab("Trades")
+        ttk.Label(f, text="Trade ideas", font=(FONT[0], 12, "bold")).pack(anchor="w")
+        ttk.Label(f, text="Their player is better on base, but not hotter than yours lately, so the offer"
+                          " looks fair to them. Up to 3 per team. Double-click to open the player you'd get.",
+                  style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
+        self.trades = Table(f, ("team", "owner", "you send", "send base", "send L15",
+                                "you get", "get base", "get L15", "gain/g"),
+                            text_cols=("team", "owner", "you send", "you get"),
+                            wide=("team", "you send", "you get"),
+                            on_open=lambda v: self.show_player(v[5]) if v[6] else None)
+        self.trades.pack(fill="both", expand=True)
 
     def _player_tab(self):
         f = self._tab("Player")
@@ -207,16 +262,28 @@ class App(tk.Tk):
         self.player_q.pack(side="left", padx=6)
         self.player_q.bind("<Return>", lambda e: self.show_player(self.player_q.get()))
         ttk.Button(bar, text="Search", command=lambda: self.show_player(self.player_q.get())).pack(side="left")
+        top = ttk.Frame(f)
+        top.pack(fill="x")
+        # A blank image makes the label size itself in pixels; text shows on top when there's no photo.
+        self._blank = tk.PhotoImage(width=PHOTO_W, height=PHOTO_H)
+        self.photo_label = tk.Label(top, image=self._blank, compound="center", background="#e9ecf1",
+                                    text="", foreground="#888888", font=FONT)
+        self.photo_label.pack(side="left", padx=(0, 14))
+        self._photo = None        # keep a reference or Tk drops the image
+        self._photo_for = None    # player id the photo belongs to, so slow downloads can't show the wrong face
+        right = ttk.Frame(top)
+        right.pack(side="left", fill="both", expand=True)
         self.player_head = tk.StringVar(value="Search a player, or double-click one in any table.")
-        ttk.Label(f, textvariable=self.player_head, font=(FONT[0], 12, "bold")).pack(anchor="w", pady=(4, 8))
-        self.player_splits = Table(f, ("split", "gp", "fp/g", *BOX), text_cols=("split",),
+        ttk.Label(right, textvariable=self.player_head, font=(FONT[0], 12, "bold")).pack(anchor="w", pady=(4, 8))
+        self.player_splits = Table(right, ("split", "gp", "fp/g", *BOX), text_cols=("split",),
                                    wide=("split",), height=5)
-        self.player_splits.pack(fill="x")
+        self.player_splits.pack(fill="both", expand=True)
         self.breakdown_head = tk.StringVar()
         ttk.Label(f, textvariable=self.breakdown_head, style="Sub.TLabel").pack(anchor="w", pady=(12, 2))
         self.breakdown = Table(f, ("stat", "per game", "pts each", "fantasy pts"),
                                text_cols=("stat",), height=11)
         self.breakdown.pack(fill="both", expand=True)
+        return f
 
     def _activity_tab(self):
         f = self._tab("Activity")
@@ -246,8 +313,13 @@ class App(tk.Tk):
 
     def _error(self, msg):
         self.refresh_btn.state(["!disabled"])
+        if self._auto_loading:  # don't pop a dialog every 15 minutes if the wifi drops
+            self._auto_loading = False
+            self.status.set(f"Auto-refresh failed at {datetime.now():%H:%M}; will retry")
+            self._schedule_auto()
+            return
         self.status.set("")
-        if self.tabs.index("current") == 3:  # player lookups explain themselves inline
+        if self.tabs.select() == str(self.player_tab):  # player lookups explain themselves inline
             self.player_head.set(msg)
         else:
             from tkinter import messagebox
@@ -255,10 +327,21 @@ class App(tk.Tk):
 
     # ------------------------------------------------------------ data
 
-    def refresh(self):
+    _auto_loading = False
+    _auto_job = None
+
+    def refresh(self, auto=False):
+        if "disabled" in self.refresh_btn.state():
+            return  # already loading
+        self._auto_loading = auto
         self.refresh_btn.state(["disabled"])
-        self.status.set("Loading from ESPN...")
+        self.status.set("Refreshing..." if auto else "Loading from ESPN...")
         self.run(self._load, self._show)
+
+    def _schedule_auto(self):
+        if self._auto_job:
+            self.after_cancel(self._auto_job)
+        self._auto_job = self.after(AUTO_REFRESH_MIN * 60 * 1000, lambda: self.refresh(auto=True))
 
     def _load(self):
         if self.demo:
@@ -277,18 +360,26 @@ class App(tk.Tk):
             activity = league.recent_activity(size=50)
         except Exception:
             activity = []
+        analysis = fantasy.analyze(league, me, fa_count=100)
+        mine, others, fas = analysis
         return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day,
-                    alerts=fantasy.build_alerts(league, me, cfg["thresholds"]), activity=activity)
+                    alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis),
+                    mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3),
+                    activity=activity)
 
     def _show(self, d):
         self.data = d
+        self._auto_loading = False
         league = d["league"]
         name = getattr(getattr(league, "settings", None), "name", "Fantasy Hoops")
         self.league_name.set(name)
-        self.status.set(f"Updated {datetime.now():%H:%M}")
+        self.status.set(f"Updated {datetime.now():%H:%M}  ·  auto-refresh every {AUTO_REFRESH_MIN} min")
         self.refresh_btn.state(["!disabled"])
+        self._schedule_auto()
         self._fill_standings()
         self._fill_my_team()
+        self._fill_free_agents()
+        self._fill_trades()
         names = [t.team_name for t in sorted(league.teams, key=lambda t: -t.points_for)]
         current = self.team_pick.get()
         self.team_pick["values"] = names
@@ -338,6 +429,37 @@ class App(tk.Tk):
             tags.append((status_tag(p) or ("hot" if hot else "cold" if cold else ""),))
         self.my_roster.set_rows(rows, tags)
 
+    def _fill_free_agents(self):
+        d = self.data
+        t = d["cfg"]["thresholds"]
+        droppable = sorted((f for f in d["mine"] if f.player.lineupSlot != "IR"), key=lambda f: f.worth)
+        worst = droppable[0] if droppable else None
+        rows, tags, upgrades = [], [], 0
+        for fa in sorted(d["fas"], key=lambda f: -f.worth):
+            p = fa.player
+            # The weakest player of yours this free agent clearly beats (start from your very worst).
+            beats = worst if worst and fa.healthy and fa.worth > worst.worth * (1 + t["waiver_margin"]) else None
+            upgrades += bool(beats)
+            trusted = fa.games >= t["min_games"]
+            rows.append((p.name, p.position, p.proTeam, status_text(p), fa.games, f"{fa.baseline:.1f}",
+                         f"{fa.recent:.1f}", f"{fa.trend:+.0%}" if trusted else "-", f"{fa.worth:.1f}",
+                         beats.player.name if beats else "", f"+{fa.worth - beats.worth:.1f}" if beats else ""))
+            tags.append((status_tag(p) or ("hot" if beats else ""),))
+        self.free_agents.set_rows(rows, tags)
+        floor = f"your weakest is {worst.player.name} at {worst.worth:.1f}" if worst else ""
+        self.fa_head.set(f"Top {len(rows)} available players  ·  {upgrades} would upgrade your roster  ·  {floor}")
+
+    def _fill_trades(self):
+        d = self.data
+        rows = [(team.team_name, owner_names(team), give.player.name, f"{give.baseline:.1f}", f"{give.recent:.1f}",
+                 get.player.name, f"{get.baseline:.1f}", f"{get.recent:.1f}", f"+{gain:.1f}")
+                for team, gain, give, get in d["trades"]]
+        if not rows:
+            n = d["cfg"]["thresholds"]["min_games"]
+            rows = [("No trade ideas right now.", "", f"Needs players with {n}+ games played,", "", "",
+                     "so expect these once the season is a week or two in.", "", "", "")]
+        self.trades.set_rows(rows)
+
     def _fill_league(self):
         d = self.data
         if not d:
@@ -377,13 +499,13 @@ class App(tk.Tk):
     def show_team(self, team_name):
         self.team_pick.set(team_name)
         self._fill_league()
-        self.tabs.select(2)
+        self.tabs.select(self.league_tab)
 
     def show_player(self, name):
         name = str(name).replace(" *", "").strip()
         if not name or not self.data:
             return
-        self.tabs.select(3)
+        self.tabs.select(self.player_tab)
         self.player_q.delete(0, "end")
         self.player_q.insert(0, name)
         self.player_head.set(f"Looking up {name}...")
@@ -398,6 +520,13 @@ class App(tk.Tk):
         league, rules, year = self.data["league"], self.data["rules"], self.data["league"].year
         owner = f"{team.team_name} ({owner_names(team)})" if team else "free agent"
         self.player_head.set(f"{p.name}   ·   {p.position}, {p.proTeam}   ·   {status_text(p)}   ·   {owner}")
+        self._photo_for = p.playerId
+        self.photo_label.configure(image=self._blank, text="Loading photo...")
+        if self.demo:  # demo ids are made up and could match a real player's photo
+            self.photo_label.configure(text="No photo")
+        else:
+            pid = p.playerId
+            self.run(lambda: (pid, headshot(pid)), self._show_photo)
         self.player_splits.set_rows(
             [(SPLIT_LABELS[k], games(split_of(p, year, k)), f"{fp_per_game(split_of(p, year, k), rules):.1f}",
               *(box(split_of(p, year, k), stat) for stat in BOX))
@@ -409,6 +538,21 @@ class App(tk.Tk):
         self.breakdown_head.set(f"Where the points come from ({'projected' if proj else 'season'}, per game)")
         self.breakdown.set_rows([(stat, f"{per:.1f}", f"{pts:+g}", f"{per * pts:+.1f}") for stat, per, pts in parts],
                                 [("hot" if per * pts > 0 else "cold",) for _, per, pts in parts])
+
+    def _show_photo(self, result):
+        pid, path = result
+        if pid != self._photo_for:
+            return  # a different player was opened while this one downloaded
+        if path is None:
+            self.photo_label.configure(image=self._blank, text="No photo")
+            return
+        try:
+            self._photo = tk.PhotoImage(file=str(path)).subsample(2)  # 600x436 -> 300x218
+        except tk.TclError:
+            path.unlink(missing_ok=True)  # corrupt download; fetch again next time
+            self.photo_label.configure(image=self._blank, text="No photo")
+            return
+        self.photo_label.configure(image=self._photo, text="")
 
 
 def main():

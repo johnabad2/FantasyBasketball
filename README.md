@@ -16,10 +16,17 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 
 ## The window
 
-Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). It opens with tabs for
-Standings, My Team (alerts + roster form), League (any team's roster, any stat window), Player
-(search any NBA player) and Activity. Click a column header to sort; double-click a player or
-team to open it. **Refresh** pulls the latest from ESPN. `--demo` works here too.
+Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app.py`). Tabs:
+
+- **Standings**, **My Team** (alerts + roster form)
+- **Free Agents**: the top 100 available players; green ones beat your weakest player
+- **Trades**: up to 3 trade ideas per team, best gain first
+- **League**: any team's roster, any stat window
+- **Player**: search any NBA player, with their ESPN photo (cached in `data\headshots`)
+- **Activity**: recent adds, drops and trades
+
+Click a column header to sort; double-click a player or team to open it. The window refreshes
+from ESPN every 15 minutes while open, or click **Refresh**. `--demo` works here too.
 
 ## Commands
 
