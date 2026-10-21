@@ -42,10 +42,21 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   this week, counting only games on days you'd actually start them, and who to make room with
   (an open roster spot if you have one, then your empty IR slot: INJ players always qualify, O
   players only once ESPN marks them IR-eligible; otherwise a drop, only if you also come out ahead over
-  the rest of the season: his remaining games vs the dropped player's, at their base value)
+  the rest of the season: his remaining games vs the dropped player's, at their base value).
+  The **matchup** column shows how much a game is worth vs his normal average (see below)
 - **News**: ESPN's injury report for your team, every rostered player or every injured NBA
   player, with expected return dates; click a player for the full note and latest news
-- **Free Agents**: the top 100 available players; green ones beat your weakest player
+- **Free Agents**: the top 100 available players; green ones beat your weakest player per game
+  and over the next 30 days (**next 30d**)
+
+**Matchups.** Projections for a specific game are nudged by the opponent, using the
+total-points method: a game's possessions = pace A x pace B / league pace, and a team scores its
+offence x the opponent's defence / league average per 100 of them. A player's own team is already
+in his average, so only the opponent matters: `opponent pace / league pace x (1 + 0.5 x (opponent
+defensive rating / league average - 1))`, capped at ±10%. Pace counts fully, defence half (a bad
+defence gives up points, not rebounds or steals). Ratings come from ESPN's team stats: last season,
+blended toward this season as games are played; cached daily in `data\team_ratings.json`. It feeds
+the daily lineups, streamers, projected totals and the 30-day pickup check.
 - **Trades**: up to 3 trade ideas per team, best gain first
 - **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
   team's lineup strength (per-game value of its best 10 starters) before and after, the change in

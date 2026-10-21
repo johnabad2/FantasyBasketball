@@ -643,9 +643,9 @@ class App(tk.Tk):
         ttk.Label(f, textvariable=self.wk_caption, style="Sub.TLabel").pack(anchor="w")
         top = ttk.Frame(f)
         top.pack(fill="x", pady=(6, 10))
-        self.wk_lineup = Table(top, ("slot", "player", "game", "pts", "change"),
+        self.wk_lineup = Table(top, ("slot", "player", "game", "matchup", "pts", "change"),
                                text_cols=("slot", "player", "game", "change"), wide=("player",),
-                               widths={"slot": 60, "game": 185, "pts": 70, "change": 230}, height=10,
+                               widths={"slot": 60, "game": 185, "matchup": 90, "pts": 70, "change": 230}, height=10,
                                on_open=lambda v: self.show_player(v[1]) if v[1] else None)
         self.wk_lineup.pack(side="left", fill="both", expand=True)
         days = ttk.Frame(top)
@@ -1124,15 +1124,17 @@ class App(tk.Tk):
                               f"{moves['best']:.1f}" + (f"  (+{gain:.1f}: make the changes below)" if gain >= 0.5
                                                        else "  - already optimal"))
             starting = {p.playerId for p in d["me"].roster if p.lineupSlot not in ("BE", "IR")}
+            today = getattr(league, "current_week", 1) or 1
             rows, tags = [], []
             for p in moves["locked"]:
-                rows.append((p.lineupSlot, p.name, lineup.game_today(league, p, games), f"{fantasy.form_of(p, league.year).baseline:.1f}",
-                             "locked (game started)"))
+                pts = fantasy.form_of(p, league.year).baseline * planner._matchup(league, p, planner._game(league, p, today))
+                rows.append((p.lineupSlot, p.name, lineup.game_today(league, p, games), self._matchup(p, today),
+                             f"{pts:.1f}", "locked (game started)"))
                 tags.append(())
             for si, slot in enumerate(moves["slots"]):
                 c = moves["lineup"].get(si)
                 if not c:
-                    rows.append((slot, "", "", "", "empty (no game)"))
+                    rows.append((slot, "", "", "", "", "empty (no game)"))
                     tags.append(("cold",))
                     continue
                 pl = c[1]
@@ -1142,12 +1144,22 @@ class App(tk.Tk):
                     change, tag = f"move from {pl.lineupSlot}", ()
                 else:
                     change, tag = "keep", ()
-                rows.append((slot, pl.name, lineup.game_today(league, pl, games), f"{c[0]:.1f}", change))
+                rows.append((slot, pl.name, lineup.game_today(league, pl, games), self._matchup(pl, today),
+                             f"{c[0]:.1f}", change))
                 tags.append(tag)
             for pl in moves["bench"]:
-                rows.append(("BE", pl.name, lineup.game_today(league, pl, games) or "no game", "", "BENCH to make room"))
+                rows.append(("BE", pl.name, lineup.game_today(league, pl, games) or "no game", self._matchup(pl, today),
+                             "", "BENCH to make room"))
                 tags.append(("shaky",))
             self.wk_lineup.set_rows(rows, tags)
+
+    def _matchup(self, p, day):
+        """'+6%' when his opponent that day is fast and/or bad on defence, '-5%' for the opposite."""
+        game = planner._game(self.data["league"], p, day)
+        if not game:
+            return ""
+        f = planner._matchup(self.data["league"], p, game)
+        return f"{(f - 1) * 100:+.0f}%" if abs(f - 1) >= 0.005 else "even"
 
     def _show_day_lineup(self, day):
         """A future day's best lineup: who'd start in each slot, plus anyone playing who doesn't fit."""
@@ -1161,15 +1173,17 @@ class App(tk.Tk):
         for si, slot in enumerate(day["slot_names"]):
             c = day["lineup"].get(si)
             if c:
-                rows.append((slot, c[1].name, games.get(team_of(c[1]), ""), f"{c[0]:.1f}", "start"))
+                rows.append((slot, c[1].name, games.get(team_of(c[1]), ""), self._matchup(c[1], day["day"]),
+                             f"{c[0]:.1f}", "start"))
                 tags.append(())
             else:
-                rows.append((slot, "", "", "", "empty (no game)"))
+                rows.append((slot, "", "", "", "", "empty (no game)"))
                 tags.append(("cold",))
         used = {c[1].playerId for c in day["lineup"].values()}
         for value, p, _ in sorted(day["cands"], key=lambda c: -c[0]):
             if p.playerId not in used:
-                rows.append(("BE", p.name, games.get(team_of(p), ""), f"{value:.1f}", "plays, but no open slot fits"))
+                rows.append(("BE", p.name, games.get(team_of(p), ""), self._matchup(p, day["day"]), f"{value:.1f}",
+                             "plays, but no open slot fits"))
                 tags.append(("shaky",))
         self.wk_lineup.set_rows(rows, tags)
 

@@ -7,6 +7,7 @@ import time
 from datetime import date, datetime, timedelta
 
 from fantasy import OUT_STATUSES, form_of, unbalances
+import matchups
 from projections import availability, nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
@@ -93,6 +94,12 @@ def _game(league, player, day):
     return games[0] if games else None
 
 
+def _matchup(league, player, game):
+    """How much better (or worse) than usual this game is for him: the opponent's pace and defence."""
+    tid = nba_team_id(player)
+    return matchups.factor(matchups.for_league(league), matchups.opponent(game, tid)) if game else 1.0
+
+
 def _available(player, game, injuries):
     """Will he play in this game? OUT players count again from their expected return date."""
     if game is None:
@@ -112,7 +119,7 @@ def _cands(league, players, values, day, injuries, not_started=False):
         g = _game(league, p, day)
         if not _available(p, g, injuries) or (not_started and g["date"] <= now_ms):
             continue
-        out.append((values[p.playerId], p, set(p.eligibleSlots or [])))
+        out.append((values[p.playerId] * _matchup(league, p, g), p, set(p.eligibleSlots or [])))
     return out
 
 
@@ -133,13 +140,17 @@ def expected_games(league, player, first_day, last_day, injuries):
 
 def next_days(league, form, injuries, days=30):
     """(expected fantasy points, expected games) over the next `days` days, at his 'worth'
-    (average of base and last 15 days). None without an NBA schedule (demo)."""
+    (average of base and last 15 days), each game adjusted for the opponent (matchups.py).
+    None without an NBA schedule (demo)."""
     if not getattr(league, "pro_schedule", None):
         return None
     today = getattr(league, "current_week", 1) or 1
     final = getattr(league, "finalScoringPeriod", None) or 174
-    games = expected_games(league, form.player, today, min(today + days - 1, final), injuries)
-    return form.worth * games, games
+    p, share = form.player, availability(form.player, league.year)
+    played = [g for day in range(today, min(today + days - 1, final) + 1)
+              for g in [_game(league, p, day)] if _available(p, g, injuries)]
+    games = len(played) * share
+    return form.worth * share * sum(_matchup(league, p, g) for g in played), games
 
 
 def _day_date(league, day):
@@ -266,11 +277,14 @@ def today_moves(league, team, injuries):
     def plays(p):
         return _available(p, _game(league, p, day), injuries)
 
-    current = sum(values[p.playerId] for p in starters if plays(p))
-    best_pts = sum(values[p.playerId] for p in locked if plays(p)) + sum(c[0] for c in best.values())
+    def val(p):  # today's value, matchup included (same as the best lineup uses)
+        return values[p.playerId] * _matchup(league, p, _game(league, p, day))
+
+    current = sum(val(p) for p in starters if plays(p))
+    best_pts = sum(val(p) for p in locked if plays(p)) + sum(c[0] for c in best.values())
     start = [(c[1], slots[si]) for si, c in best.items() if c[1] not in starters]
     displaced = [p for p in starters if p not in locked and p.playerId not in chosen]
-    displaced.sort(key=lambda p: (plays(p), values[p.playerId]))  # no game today first
+    displaced.sort(key=lambda p: (plays(p), val(p)))  # no game today first
     bench = displaced[:len(start)]  # only make room for the players coming in
     moves = [(c[1], c[1].lineupSlot, slots[si]) for si, c in best.items()
              if c[1] in starters and c[1].lineupSlot != slots[si]]  # starters switching slots

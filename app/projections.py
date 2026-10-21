@@ -27,9 +27,13 @@ def nba_team_id(player):
 
 
 def today_points(league, forms, games=None):
-    """{player id: projected fantasy points today}: his base value if he has a game, else 0."""
+    """{player id: projected fantasy points today}: his base value x today's matchup if he has a
+    game, else 0."""
+    import planner
     games = lineup.todays_games(league) if games is None else games
-    return {f.player.playerId: (f.baseline if nba_team_id(f.player) in games else 0.0) for f in forms}
+    day = getattr(league, "current_week", 1) or 1
+    return {f.player.playerId: (f.baseline * planner._matchup(league, f.player, planner._game(league, f.player, day))
+                                if nba_team_id(f.player) in games else 0.0) for f in forms}
 
 
 def vs_projection(player, year, rules, min_games=3):
@@ -68,6 +72,8 @@ def rest_of_season(league, players, slots):
     # expected value per scheduled game = base x the share of games he's expected to play
     roster = [(form_of(p, league.year).baseline * availability(p, league.year), nba_team_id(p)) for p in players
               if (p.injuryStatus or "") != "INJURY_RESERVE"]
+    import matchups
+    table = matchups.for_league(league)
     total = 0.0
     for day in range(today, final + 1):
         key = str(day)
@@ -75,7 +81,7 @@ def rest_of_season(league, players, slots):
         for value, tid in roster:
             for game in schedule.get(tid, {}).get(key, []):
                 if day > today or game["date"] > now_ms:  # today: only games not started yet
-                    playing.append(value)
+                    playing.append(value * matchups.factor(table, matchups.opponent(game, tid)))
                     break
         total += sum(sorted(playing, reverse=True)[:slots])
     return total
