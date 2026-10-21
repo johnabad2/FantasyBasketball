@@ -9,7 +9,7 @@ import sys
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from tkinter import ttk
 
 import fantasy
@@ -154,7 +154,7 @@ class Table(ttk.Frame):
         background (your team, ticked players) keep it."""
         for i, k in enumerate(self.tree.get_children("")):
             tags = [t for t in self.tree.item(k, "tags") if t != "odd"]
-            if i % 2 and "me" not in tags:
+            if i % 2 and not {"me", "newweek"} & set(tags):
                 tags.append("odd")
             self.tree.item(k, tags=tags)
 
@@ -703,7 +703,9 @@ class App(tk.Tk):
                   font=(FONT[0], 10, "bold")).pack(anchor="w")
         self.wk_days = Table(days, ("day", "slots filled", "proj pts", "who's playing"),
                              text_cols=("day", "slots filled", "who's playing"), wide=("who's playing",),
-                             widths={"day": 110, "slots filled": 300, "proj pts": 80}, height=7)
+                             widths={"day": 110, "slots filled": 300, "proj pts": 80}, height=8)
+        self.wk_days.tree.tag_configure("newweek", background=theme.blend(T["above"], PAGE, 0.35), foreground="#ffffff",
+                                        font=(FONT[0], 10, "bold"))
         self.wk_days.pack(fill="both", expand=True, pady=(4, 0))
         self.wk_days.tree.bind("<<TreeviewSelect>>", self._week_day_selected)
         self._wk_week, self._wk_selected = [], 0
@@ -1283,11 +1285,20 @@ class App(tk.Tk):
         sel = self.wk_days.tree.selection()
         if sel and sel[0].isdigit():
             self._show_week_day(int(sel[0]))
+        elif sel and self._wk_week:  # the WEEK divider isn't a day: keep the current day selected
+            self.wk_days.tree.selection_set(str(self._wk_selected))
 
     def _fill_week_days(self):
         week = self._wk_week
-        rows, tags = [], []
-        for day in week:
+        rows, tags, iids = [], [], []
+        league = self.data["league"]
+        first_day = date.today() - timedelta(days=(getattr(league, "current_week", 1) or 1) - 1)
+        week_of = lambda d: ((d - timedelta(days=d.weekday())) - (first_day - timedelta(days=first_day.weekday()))).days // 7 + 1
+        for i, day in enumerate(week):
+            if i and day["date"].weekday() == 0:  # a new fantasy week starts on Monday
+                rows.append((f"WEEK {week_of(day['date'])}", f"starts {day['date']:%a %d %b}", "", ""))
+                tags.append(("newweek",))
+                iids.append(f"week{i}")
             bar = "\u2588" * day["filled"] + "\u2591" * (day["slots"] - day["filled"])
             starters = sorted(day["lineup"].values(), key=lambda c: -c[0])
             used = {c[1].playerId for c in starters}
@@ -1297,7 +1308,8 @@ class App(tk.Tk):
             rows.append((f"{day['date']:%a %d %b}", f"{bar}  {day['filled']}/{day['slots']}",
                          f"{day['points']:.0f}", who or "nobody"))
             tags.append(("cold",) if day["filled"] <= day["slots"] // 2 else ())
-        self.wk_days.set_rows(rows, tags, [str(i) for i in range(len(rows))])
+            iids.append(str(i))
+        self.wk_days.set_rows(rows, tags, iids)
         if week:
             self.wk_days.tree.selection_set(str(self._wk_selected))
         light = [day for day in week if day["filled"] < day["slots"]]
