@@ -31,7 +31,8 @@ def _trades(league, limit=100):
         return []
     teams = {t.team_id: t for t in league.teams}
     rostered = {p.playerId: p for t in league.teams for p in t.roster}
-    review = timedelta(hours=getattr(league.settings, "trade_revision_hours", None) or 24)
+    hours = getattr(league.settings, "trade_revision_hours", None)
+    review = timedelta(hours=24 if hours is None else hours)  # 0 = trades go through instantly
 
     def player(pid):
         p = rostered.get(pid)
