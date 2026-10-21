@@ -45,18 +45,21 @@ def vs_projection(player, year, rules, min_games=3):
     return fp_per_game(season, rules) - fp_per_game(split_of(player, year, "projected"), rules)
 
 
-def projected_final(league):
+def projected_final(league, so_far=None, teams=None):
     """{fantasy team id: (points so far, projected rest of season, projected final)} or None
     when the league has no NBA schedule (demo). Simulates each remaining day: a team scores
-    with its best `slots` players whose NBA team plays that day (injured-reserve players sit)."""
+    with its best `slots` players whose NBA team plays that day (injured-reserve players sit).
+    so_far: {team id: points} (live points; ESPN's standings total lags a day); teams: the teams
+    to project, e.g. with pending trades applied (feed.after_trades)."""
     schedule = getattr(league, "pro_schedule", None)
     if not schedule:
         return None
     from trade import lineup_slots
     out = {}
-    for team in league.teams:
+    for team in (teams or league.teams):
+        done = (so_far or {}).get(team.team_id, team.points_for)
         rest = rest_of_season(league, team.roster, lineup_slots(team))
-        out[team.team_id] = (team.points_for, rest, team.points_for + rest)
+        out[team.team_id] = (done, rest, done + rest)
     return out
 
 

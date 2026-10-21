@@ -58,6 +58,12 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   10% in value) that fix a position imbalance for you, for them or both, without either starting
   lineup getting worse. Double-click one to open it in Trade Lab
 
+**Pending trades.** An accepted trade takes ~24 hours to go through on ESPN. Meanwhile the app
+already counts it as done for everything forward-looking (Week Ahead from the day after it
+processes, streamers, alerts, the 30-day numbers, trade partners and every team's projected final);
+today's lineup still uses the roster you actually have. My Team shows a note while one is pending.
+A trade still unprocessed 6 hours after its review ended is treated as vetoed.
+
 **Matchups.** Projections for a specific game are nudged by the opponent, using the
 total-points method: a game's possessions = pace A x pace B / league pace, and a team scores its
 offence x the opponent's defence / league average per 100 of them. A player's own team is already

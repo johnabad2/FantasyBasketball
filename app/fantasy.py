@@ -445,18 +445,22 @@ def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
                   f"{s['light_games']} of them on days you have empty lineup slots.")]
 
 
-def analyze(league, my_team, fa_count=75):
-    """Form for your roster, every other roster, and the free-agent pool."""
+def analyze(league, my_team, fa_count=75, teams=None):
+    """Form for your roster, every other roster, and the free-agent pool. teams: the teams to use
+    (e.g. with pending trades applied); defaults to the league's."""
     year = league.year
     mine = [form_of(p, year) for p in my_team.roster]
     others = [(tm, [form_of(p, year) for p in tm.roster])
-              for tm in league.teams if tm.team_id != my_team.team_id]
+              for tm in (teams or league.teams) if tm.team_id != my_team.team_id]
     # proTeam "FA" means unsigned in the NBA: no games, no points.
     fas = [form_of(p, year) for p in league.free_agents(size=fa_count) if p.proTeam != "FA"]
     return mine, others, fas
 
 
 def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
+    """my_team can be the planned team (pending trades applied, see feed.after_trades); today's
+    lineup alert always uses the roster you actually have on ESPN right now."""
+    today_team = getattr(my_team, "_team", my_team)
     mine, others, fas = analysis or analyze(league, my_team)
     real = bool(getattr(league, "pro_schedule", None))  # the demo league has no schedule or ESPN ids
     if injuries is None:
@@ -469,7 +473,7 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
         balance_alerts(my_team)
     if real:
         alerts += opportunity_alerts(league, mine, injuries, thresholds, leaving) + minutes_alerts(mine, league.year)
-        alerts += (status_alerts(mine, injuries) + lineup_alerts(league, my_team, injuries)
+        alerts += (status_alerts(mine, injuries) + lineup_alerts(league, today_team, injuries)
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))
     alerts += trade_alerts(mine, others, thresholds, leaving)
     return sorted(alerts, key=lambda a: a.priority)
@@ -580,7 +584,11 @@ def cmd_roster(league, cfg, team_query):
 def cmd_alerts(league, cfg, do_notify, save_snapshot):
     if save_snapshot:
         stats.snapshot(league, stats.scoring_rules(league))  # so scheduled checks build the history
-    alerts = build_alerts(league, my_team(league, cfg), cfg["thresholds"])
+    import feed
+    me = my_team(league, cfg)
+    after = feed.after_trades(league)
+    plan = after.get(me.team_id, me)
+    alerts = build_alerts(league, plan, cfg["thresholds"], analyze(league, plan, teams=list(after.values())))
     if not alerts:
         print("Nothing to do right now.")
     labels = {1: "DO NOW", 2: "CONSIDER", 3: "FYI"}

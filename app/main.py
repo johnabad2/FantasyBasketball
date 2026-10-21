@@ -391,7 +391,10 @@ class App(tk.Tk):
     def _my_team_tab(self):
         f = self._tab("My Team")
         self.my_title = tk.StringVar()
-        ttk.Label(f, textvariable=self.my_title, font=(FONT[0], 12, "bold")).pack(anchor="w")
+        self.my_title_label = ttk.Label(f, textvariable=self.my_title, font=(FONT[0], 12, "bold"))
+        self.my_title_label.pack(anchor="w")
+        self.my_pending = tk.StringVar()
+        self.my_pending_label = ttk.Label(f, textvariable=self.my_pending, foreground=AMBER)
         ttk.Label(f, text="Alerts", style="Sub.TLabel").pack(anchor="w", pady=(8, 2))
         self.alerts = tk.Text(f, height=4, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=10, pady=8,
                               background=CARD, foreground=TEXT, insertbackground=TEXT, font=FONT, cursor="arrow")
@@ -847,28 +850,35 @@ class App(tk.Tk):
             activity = league.recent_activity(size=50)
         except Exception:
             activity = []
-        live = getattr(league, "pro_schedule", None)  # the demo league has no ESPN feed
-        chat_msgs = chat.league_chat(league) if live else []
-        trades = feed.trades(league) if live else []
-        analysis = fantasy.analyze(league, me, fa_count=100)
+        real = bool(getattr(league, "pro_schedule", None))  # the demo league has no ESPN feed or schedule
+        chat_msgs = chat.league_chat(league) if real else []
+        trades = feed.trades(league) if real else []
+        # Accepted trades count as done for everything forward-looking; today's lineup uses the real roster.
+        after = feed.after_trades(league) if real else {t.team_id: t for t in league.teams}
+        planned = after[me.team_id]
+        pending = [t for t in feed.pending(league) if any(s["team_id"] == me.team_id for s in t["sides"])] if real else []
+        analysis = fantasy.analyze(league, planned, fa_count=100, teams=list(after.values()))
         mine, others, fas = analysis
-        projected = projections.projected_final(league)
         scores = stats.season_scores(league)
         live, weekly = stats.live_points(league, scores), stats.weekly_standings(league, scores)
+        projected = projections.projected_final(league, live, list(after.values()))
         day = getattr(league, "current_week", 1) or 1
         today_pts = {tid: days[day] for tid, (_, days) in scores.items() if day in days}  # live; none in the demo
-        real = bool(getattr(league, "pro_schedule", None))
         injuries = news.injuries() if real else {}
-        values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in me.roster}
-        plan = dict(week=planner.week(league, me.roster, values, injuries) if real else [],
-                    moves=planner.today_moves(league, me, injuries),
-                    streamers=planner.streamers(league, me, fas, injuries))
-        return dict(league=league, cfg=cfg, rules=rules, me=me, today_pts=today_pts, projected=projected, live=live, weekly=weekly,
+        values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in list(me.roster) + list(planned.roster)}
+        week = planner.week(league, me.roster, values, injuries) if real else []
+        if pending:  # from the day after a trade goes through, plan with the new roster
+            switch = max(t["process_at"] for t in pending).date()
+            later = planner.week(league, planned.roster, values, injuries)
+            week = [b if a["date"] > switch else a for a, b in zip(week, later)]
+        plan = dict(week=week, moves=planner.today_moves(league, me, injuries),
+                    streamers=planner.streamers(league, planned, fas, injuries))
+        return dict(league=league, cfg=cfg, rules=rules, me=me, planned=planned, pending=pending,
+                    today_pts=today_pts, projected=projected, live=live, weekly=weekly,
                     injuries=injuries, plan=plan,
                     opportunities=opportunity.opportunities(league, injuries) if real else [],
-                    partners=trade.partners(league, me, fantasy.load_keep() | (feed.leaving(league, me.team_id)
-                                                                                if real else set())),
-                    alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
+                    partners=trade.partners(league, planned, fantasy.load_keep()),
+                    alerts=fantasy.build_alerts(league, planned, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
                                                               leaving=feed.leaving(league, me.team_id) if real else ()),
                     activity=activity, chat=chat_msgs, trade_feed=trades)
@@ -932,6 +942,18 @@ class App(tk.Tk):
         extra = f"   ·   projected final {proj[2]:,.0f}" if proj else ""
         self.my_title.set(f"{me.team_name}   ·   {self._pts(me):.1f} pts   ·   #{rank} of {len(d['league'].teams)}"
                           f"   ·   your lineup projects {lineup_today:.1f} pts today{extra}")
+        notes = []
+        for t in d.get("pending") or []:
+            mine_side = next(s for s in t["sides"] if s["team_id"] == me.team_id)
+            out = [p["name"] for s in t["sides"] if s is not mine_side for p in s["receives"]]
+            notes.append(f"{', '.join(out)} -> {', '.join(p['name'] for p in mine_side['receives'])} "
+                         f"(goes through {t['process_at']:%a %H:%M})")
+        self.my_pending.set("Pending trade counted as done in Week Ahead, alerts and projections: " + "; ".join(notes)
+                            if notes else "")
+        if notes:
+            self.my_pending_label.pack(anchor="w", pady=(2, 0), after=self.my_title_label)
+        else:
+            self.my_pending_label.pack_forget()
 
         self.alerts.configure(state="normal")
         self.alerts.delete("1.0", "end")

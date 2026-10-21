@@ -12,6 +12,13 @@ ACCEPTED, PROCESSED, TRADE_DROP = 224, 244, 245
 
 
 def trades(league, limit=100):
+    """Cached per league object (one ESPN request per refresh). See _trades."""
+    if getattr(league, "_fh_trades", None) is None:
+        league._fh_trades = _trades(league, limit)
+    return league._fh_trades
+
+
+def _trades(league, limit=100):
     """[{when, kind ("accepted"/"completed"), process_at, sides: [{team, manager, receives, drops}]}]
     newest first. Players are {id, name, pro, pos}. [] if ESPN can't be reached."""
     filters = {"topics": {"filterType": {"value": ["ACTIVITY_TRANSACTIONS"]}, "limit": limit,
@@ -41,7 +48,8 @@ def trades(league, limit=100):
         def side(team_id):
             if team_id not in sides:
                 t = teams.get(team_id)
-                sides[team_id] = {"team": t.team_name if t else "?", "manager": owner_names(t) if t else "",
+                sides[team_id] = {"team_id": team_id, "team": t.team_name if t else "?",
+                                  "manager": owner_names(t) if t else "",
                                   "receives": [], "drops": []}
             return sides[team_id]
 
@@ -65,16 +73,52 @@ def trades(league, limit=100):
     return sorted(out, key=lambda t: t["when"], reverse=True)
 
 
+VETO_GRACE = timedelta(hours=6)  # accepted, review over, still not processed this long after: vetoed
+
+
+def pending(league):
+    """Accepted trades still waiting to go through (oldest first)."""
+    if not getattr(league, "pro_schedule", None):
+        return []
+    now = datetime.now()
+    return sorted((t for t in trades(league) if t["kind"] == "accepted" and t["process_at"] + VETO_GRACE > now),
+                  key=lambda t: t["when"])
+
+
 def leaving(league, team_id):
     """Ids of this team's players in accepted trades that haven't gone through yet: never suggest
-    dropping or trading them (that would break the deal). Cached on the league object."""
-    cache = getattr(league, "_fh_leaving", None)
-    if cache is None:
-        cache = {}
-        for t in trades(league) if getattr(league, "pro_schedule", None) else []:
-            if t["kind"] == "accepted":
-                for team in t["sides"]:
-                    for p in team["receives"]:
-                        cache.setdefault(p["from"], set()).add(p["id"])
-        league._fh_leaving = cache
-    return cache.get(team_id, set())
+    dropping or trading them (that would break the deal)."""
+    return {p["id"] for t in pending(league) for side in t["sides"] for p in side["receives"]
+            if p["from"] == team_id}
+
+
+def after_trades(league):
+    """Every team as it will be once the pending trades go through: {team id: team-like object
+    with .roster swapped} (same name, id, owners...). Teams with no pending trade are returned as is.
+    Cached on the league object."""
+    if getattr(league, "_fh_after", None) is None:
+        rosters = {t.team_id: list(t.roster) for t in league.teams}
+        players = {p.playerId: p for roster in rosters.values() for p in roster}
+        changed = set()
+        for t in pending(league):
+            for side in t["sides"]:
+                for got in side["receives"]:
+                    p = players.get(got["id"])
+                    if p is None or got["from"] not in rosters:
+                        continue
+                    rosters[got["from"]] = [x for x in rosters[got["from"]] if x.playerId != p.playerId]
+                    rosters[side["team_id"]].append(p)
+                    changed |= {got["from"], side["team_id"]}
+        league._fh_after = {t.team_id: (_Planned(t, rosters[t.team_id]) if t.team_id in changed else t)
+                            for t in league.teams}
+    return league._fh_after
+
+
+class _Planned:
+    """A fantasy team with its roster as it will be after pending trades; everything else is the real team."""
+
+    def __init__(self, team, roster):
+        self._team, self.roster = team, roster
+
+    def __getattr__(self, name):
+        return getattr(self._team, name)
