@@ -179,11 +179,19 @@ function strengthChart(el, rows) {
   const vals = rows.flatMap((r) => [r.before, r.after]);
   const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo) * 0.1 || 1;
   chart.setOption({
-    grid: { left: 150, right: 30, top: 6, bottom: 24 },
+    grid: { left: 150, right: 108, top: 6, bottom: 24 },
     tooltip: { ...tipStyle, trigger: "item", formatter: (p) => `${esc(p.data.team)}<br>${num(p.data.before)} → ${num(p.data.after)} fp/g` },
     xAxis: { type: "value", min: Math.floor(lo - pad), max: Math.ceil(hi + pad), axisLabel: { color: MUTED },
              splitLine: { lineStyle: { color: GRID } } },
-    yAxis: { type: "category", data: names, axisLabel: { color: (v) => MUTED, fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
+    yAxis: [
+      { type: "category", data: names, axisLabel: { color: (v) => MUTED, fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
+      // each team's strength after the trade on the right, with the change for the two teams trading
+      { type: "category", data: names, position: "right", axisLine: { show: false }, axisTick: { show: false },
+        axisLabel: { fontSize: 11, formatter: (team) => {
+          const r = rows.find((x) => x.team === team), d = r.after - r.before;
+          return r.side === null ? `{o|${num(r.after)}}` : `{t|${num(r.after)}} {${d >= 0 ? "g" : "b"}|(${signed(d)})}`;
+        }, rich: { o: { color: MUTED }, t: { color: "#e8edf4", fontWeight: "bold" }, g: { color: GREEN }, b: { color: RED } } } },
+    ],
     series: [
       { type: "scatter", symbolSize: 10, itemStyle: { color: "transparent", borderWidth: 2 },
         data: rows.map((r) => ({ value: [r.before, r.team], team: r.team, before: r.before, after: r.after,
