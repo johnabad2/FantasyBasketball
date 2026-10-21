@@ -223,3 +223,78 @@ class StrengthChart(tk.Canvas):
                              font=(FONT, 9, "bold" if involved else "normal"))
         self.create_text(x0, h - 9, text=f"axis zoomed in: {lo:.0f}-{hi:.0f} fp/g",
                          anchor="w", fill=MUTED, font=(FONT, 8))
+
+
+def partners(league, my_team, keep=(), per_team=2, limit=12):
+    """One-for-one trades that fix a position imbalance (2-3 players at each main position) for
+    you, for them, or ideally both, at similar value, without either starting lineup getting worse.
+    [{team, give, get, fixes_mine, fixes_theirs, me, them}] - me/them = change in lineup strength
+    (fp/g of starters). Mutual fixes first, then the most combined gain."""
+    from fantasy import balance_problems, unbalances
+    year = league.year
+    mine = list(my_team.roster)
+    my_vals, my_slots = _values(league, my_team), lineup_slots(my_team)
+    my_before = _strength(my_vals.values(), my_slots)
+    my_problems = balance_problems(mine)
+    out = []
+    for team in league.teams:
+        if team.team_id == my_team.team_id:
+            continue
+        theirs = list(team.roster)
+        their_vals, their_slots = _values(league, team), lineup_slots(team)
+        their_before = _strength(their_vals.values(), their_slots)
+        their_problems = balance_problems(theirs)
+        found = []
+        for give in mine:
+            if give.playerId in keep or give.lineupSlot == "IR" or (give.injuryStatus or "") in ("OUT", "INJURY_RESERVE"):
+                continue
+            g_val = my_vals[give.playerId][0]
+            for get in theirs:
+                if get.lineupSlot == "IR" or (get.injuryStatus or "") in ("OUT", "INJURY_RESERVE"):
+                    continue
+                r_val = their_vals[get.playerId][0]
+                if not (0.9 * g_val <= r_val <= 1.12 * g_val):
+                    continue  # too lopsided to be a realistic offer either way
+                if unbalances(mine, [get], [give]) or unbalances(theirs, [give], [get]):
+                    continue  # mustn't create a new problem for either side
+                mine_after = balance_problems([p for p in mine if p is not give] + [get])
+                theirs_after = balance_problems([p for p in theirs if p is not get] + [give])
+                fixes_mine = [k for k in my_problems if k not in mine_after]
+                fixes_theirs = [k for k in their_problems if k not in theirs_after]
+                if not fixes_mine and not fixes_theirs:
+                    continue
+                me = _strength([v for pid, v in my_vals.items() if pid != give.playerId] + [their_vals[get.playerId]],
+                               my_slots) - my_before
+                them = _strength([v for pid, v in their_vals.items() if pid != get.playerId] + [my_vals[give.playerId]],
+                                 their_slots) - their_before
+                if me < -0.5 or them < -0.5:
+                    continue
+                found.append({"team": team, "give": give, "get": get, "fixes_mine": fixes_mine,
+                              "fixes_theirs": fixes_theirs, "me": me, "them": them})
+        found.sort(key=lambda x: (-(bool(x["fixes_mine"]) and bool(x["fixes_theirs"])), -(x["me"] + x["them"])))
+        out += found[:per_team]
+    out.sort(key=lambda x: (-(bool(x["fixes_mine"]) and bool(x["fixes_theirs"])), -(x["me"] + x["them"])))
+    return out[:limit]
+
+
+def describe_fix(fixes, whose="your"):
+    """[("many", "PG"), ("few", "C")] -> 'your extra PG, your thin C'."""
+    return ", ".join(f"{whose} extra {pos}" if kind == "many" else f"{whose} thin {pos}" for kind, pos in fixes)
+
+
+def outlook(league, team, out_ids, incoming, injuries, days=30):
+    """What a trade does to one team: expected points over the next `days` days (best lineup each
+    day, schedule, injuries and matchups included) before and after, and its position balance.
+    {before, after (None without a schedule), fixed: [(kind, pos)], created: [text]}."""
+    import planner
+    from fantasy import balance_problems, unbalances
+    before = list(team.roster)
+    leaving = [p for p in before if p.playerId in out_ids]
+    after = [p for p in before if p.playerId not in out_ids] + list(incoming)
+    vals = {p.playerId: form_of(p, league.year).baseline for p in before + list(incoming)}
+    pts = (lambda roster: sum(d["points"] for d in planner.week(league, roster, vals, injuries, days))) \
+        if getattr(league, "pro_schedule", None) else (lambda roster: None)
+    problems_after = balance_problems(after)
+    return {"before": pts(before), "after": pts(after),
+            "fixed": [k for k in balance_problems(before) if k not in problems_after],
+            "created": unbalances(before, incoming, leaving)}

@@ -20,7 +20,9 @@ from rank_chart import RankChart
 import gamelog
 import lineup
 import news
+import opportunity
 import planner
+import schedule
 import projections
 import stats
 import theme
@@ -88,6 +90,15 @@ def short_name(name):
     """Last name, skipping suffixes: 'Scotty Pippen Jr.' -> 'Pippen', 'Jaren Jackson Jr.' -> 'Jackson'."""
     parts = [w for w in name.split() if w.rstrip(".").upper() not in ("JR", "SR", "II", "III", "IV", "V")]
     return parts[-1] if parts else name
+
+
+def minutes_text(p, year):
+    """'32' or '32 (+5)' when his last-7-day minutes differ from usual by 2 or more."""
+    usual = opportunity.minutes(p, year)
+    if not usual:
+        return "-"
+    trend = opportunity.minutes_trend(p, year)
+    return f"{usual:.0f}" + (f" ({trend:+.0f})" if trend is not None and abs(trend) >= 2 else "")
 
 
 def status_tag(p):
@@ -350,6 +361,7 @@ class App(tk.Tk):
         self._standings_tab()
         self._my_team_tab()
         self.week_tab = self._week_tab()
+        self._schedule_tab()
         self._free_agents_tab()
         self._trade_lab_tab()
         self.league_tab = self._league_tab()
@@ -395,18 +407,19 @@ class App(tk.Tk):
         ttk.Label(keep_bar, text="Kept players are never suggested to drop or trade.",
                   style="Sub.TLabel").pack(side="left", padx=10)
         self.my_roster = Table(f, ("player", "keep", "pos", "your lineup", "today", "proj today", "NBA role", "nba",
-                                   "status", "gp", "base", "L15", "trend", "vs proj", "fp tot"),
+                                   "status", "gp", "minutes", "base", "L15", "trend", "vs proj", "fp tot"),
                                text_cols=("player", "keep", "pos", "your lineup", "today", "NBA role", "nba", "status"),
                                wide=("player",), widths={"keep": 60, "your lineup": 130, "today": 180,
                                                           "NBA role": 215},
                                on_open=lambda v: self.show_player(v[0]))
         ttk.Label(f, text="base = pts per game  ·  L15 = last 15 days  ·  NBA role = recent starts  ·  "
+                          "minutes = usual (change over the last 7 days)  ·  "
                           "vs proj = beating or missing ESPN's projection",
                   style="Sub.TLabel").pack(anchor="w", pady=(4, 0))
         self.my_roster.pack(fill="both", expand=True)
 
     def _trade_lab_tab(self):
-        f = self._tab("Trade Lab")
+        f = self.trade_lab_tab = self._tab("Trade Lab")
         bar = ttk.Frame(f)
         bar.pack(fill="x", pady=(0, 8))
         ttk.Label(bar, text="Team").pack(side="left")
@@ -451,6 +464,8 @@ class App(tk.Tk):
         self.tl_text.tag_configure("b", foreground=SERIES[1], font=(FONT[0], 10, "bold"), spacing1=6)
         self.tl_text.tag_configure("body", foreground=TEXT_2, lmargin1=12, lmargin2=12)
         self.tl_text.tag_configure("muted", foreground=MUTED, lmargin1=12, lmargin2=12)
+        self.tl_text.tag_configure("good", foreground=GREEN, lmargin1=12, lmargin2=12)
+        self.tl_text.tag_configure("warn", foreground=AMBER, lmargin1=12, lmargin2=12)
         sugg = ttk.Frame(body, width=560)
         sugg.pack(side="left", fill="y", padx=(10, 0))
         sugg.pack_propagate(False)
@@ -490,6 +505,27 @@ class App(tk.Tk):
         ttk.Label(f, text="* = ESPN projection (no games yet)", style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
         return f
 
+    def _schedule_tab(self):
+        f = self._tab("Schedule")
+        self.schedule = schedule.ScheduleGrid(f)
+        self.schedule.pack(fill="both", expand=True)
+
+    def _fill_schedule(self):
+        d = self.data
+        league = d["league"]
+        if not getattr(league, "pro_schedule", None):
+            return
+        from espn_api.basketball.constant import PRO_TEAM_MAP
+        team_of = projections.nba_team_id
+        mine, fas = {}, {}
+        for p in d["me"].roster:
+            if p.lineupSlot != "IR":
+                mine.setdefault(team_of(p), []).append(short_name(p.name))
+        for f in sorted(d["fas"], key=lambda f: -f.worth):
+            if f.healthy and len(fas.setdefault(team_of(f.player), [])) < 2:
+                fas[team_of(f.player)].append(f"{short_name(f.player.name)} {f.worth:.0f}")
+        self.schedule.show(schedule.plan(league), dict(PRO_TEAM_MAP), mine, fas)
+
     def _free_agents_tab(self):
         """Free agents on the left half, trade ideas on the right: every way to improve your roster."""
         f = self._tab("Free Agents & Trades")
@@ -515,8 +551,19 @@ class App(tk.Tk):
                   style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
         self.trades = Table(right, ("team", "you send", "you get", "gain/g"),
                             text_cols=("team", "you send", "you get"), wide=("team", "you send", "you get"),
-                            on_open=lambda v: self.show_player(v[2]) if v[3] else None)
-        self.trades.pack(fill="both", expand=True)
+                            height=6, on_open=lambda v: self.show_player(v[2]) if v[3] else None)
+        self.trades.pack(fill="x")
+
+        ttk.Label(right, text="Trade partners", font=(FONT[0], 12, "bold")).pack(anchor="w", pady=(14, 0))
+        ttk.Label(right, text="Fair swaps that fix a position imbalance (2-3 per position) - yours, theirs or "
+                              "both. Double-click to open it in Trade Lab.", style="Sub.TLabel",
+                  wraplength=860).pack(anchor="w", pady=(2, 8))
+        self.partners = Table(right, ("team", "you send", "you get", "fixes", "you", "them"),
+                              text_cols=("team", "you send", "you get", "fixes"), wide=("fixes",),
+                              widths={"team": 180, "you send": 140, "you get": 160, "you": 50, "them": 56},
+                              on_open=self._open_partner)
+        self.partners.pack(fill="both", expand=True)
+        self._partners = []
 
     def _player_tab(self):
         f = self._tab("Player")
@@ -684,13 +731,25 @@ class App(tk.Tk):
         self.news_scope.pack(side="left", padx=6)
         self.news_scope.bind("<<ComboboxSelected>>", lambda e: self._fill_news())
         ttk.Label(bar, text="Click a player for the latest news.", style="Sub.TLabel").pack(side="right")
-        self.news_table = Table(f, ("player", "fantasy team", "status", "injury", "back", "latest update"),
+        top = ttk.Frame(f)
+        top.pack(fill="both", expand=True)
+        self.news_table = Table(top, ("player", "fantasy team", "status", "injury", "back", "latest update"),
                                 text_cols=("player", "fantasy team", "status", "injury", "back", "latest update"),
                                 wide=("latest update",),
                                 widths={"player": 190, "fantasy team": 200, "status": 110, "injury": 110,
                                         "back": 130}, height=12,
                                 on_open=lambda v: self.show_player(v[0]))
-        self.news_table.pack(fill="both", expand=True)
+        self.news_table.pack(side="left", fill="both", expand=True)
+        opp = ttk.Frame(top, width=700)
+        opp.pack(side="left", fill="y", padx=(12, 0))
+        opp.pack_propagate(False)
+        ttk.Label(opp, text="Opportunities", font=(FONT[0], 11, "bold")).pack(anchor="w")
+        ttk.Label(opp, text="Free agents set to play more: a teammate is out, or his minutes are rising.",
+                  style="Sub.TLabel", wraplength=620).pack(anchor="w")
+        self.opp_table = Table(opp, ("player", "nba", "usual", "now", "why"), text_cols=("player", "nba", "why"),
+                               wide=("why",), widths={"player": 170, "nba": 54, "usual": 60, "now": 60},
+                               on_open=lambda v: self.show_player(v[0]) if v[1] else None)
+        self.opp_table.pack(fill="both", expand=True, pady=(4, 0))
         self.news_table.tree.bind("<<TreeviewSelect>>", self._news_selected)
         self.news_detail = tk.Text(f, height=9, wrap="word", relief="flat", highlightthickness=1, highlightbackground=BORDER, padx=12, pady=10, background=CARD, foreground=TEXT,
                                    font=FONT, cursor="arrow")
@@ -803,6 +862,9 @@ class App(tk.Tk):
                     streamers=planner.streamers(league, me, fas, injuries))
         return dict(league=league, cfg=cfg, rules=rules, me=me, today_pts=today_pts, projected=projected, live=live, weekly=weekly,
                     injuries=injuries, plan=plan,
+                    opportunities=opportunity.opportunities(league, injuries) if real else [],
+                    partners=trade.partners(league, me, fantasy.load_keep() | (feed.leaving(league, me.team_id)
+                                                                                if real else set())),
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
                                                               leaving=feed.leaving(league, me.team_id) if real else ()),
@@ -823,6 +885,7 @@ class App(tk.Tk):
         self._fill_trades()
         self._fill_trade_lab()
         self._fill_week()
+        self._fill_schedule()
         self._fill_news()
         names = [t.team_name for t in sorted(league.teams, key=lambda t: -self._pts(t))]
         current = self.team_pick.get()
@@ -875,7 +938,8 @@ class App(tk.Tk):
             label, _ = PRIORITY[a.priority]
             self.alerts.insert("end", f"{label}  {a.title}\n", f"p{a.priority}")
             self.alerts.insert("end", a.detail.replace("\n      ", "\n") + "\n", "detail")
-        self.alerts.configure(state="disabled")
+        lines = int(self.alerts.index("end-1c").split(".")[0])
+        self.alerts.configure(state="disabled", height=min(max(lines, 3), 11))  # grow with the alerts, up to 11 lines
 
         min_games = d["cfg"]["thresholds"]["min_games"]
         forms = sorted((fantasy.form_of(p, year) for p in me.roster), key=lambda f: -f.worth)
@@ -894,8 +958,8 @@ class App(tk.Tk):
                          lineup.game_today(d["league"], p, games) or "no game",
                          f"{today_pts[p.playerId]:.1f}" if today_pts[p.playerId] else "-",
                          roles.get(p.playerId, "-" if self.demo else "loading..."), p.proTeam, status_text(p),
-                         f.games, f"{f.baseline:.1f}", f"{f.recent:.1f}", f"{f.trend:+.0%}" if trusted else "-",
-                         f"{vp:+.1f}" if vp is not None else "-",
+                         f.games, minutes_text(p, year), f"{f.baseline:.1f}", f"{f.recent:.1f}",
+                         f"{f.trend:+.0%}" if trusted else "-", f"{vp:+.1f}" if vp is not None else "-",
                          f"{split_of(p, year, 'total').get('applied_total', 0):.0f}"))
             hot = trusted and f.trend >= d["cfg"]["thresholds"]["trend_pct"]
             cold = trusted and f.trend <= -d["cfg"]["thresholds"]["trend_pct"]
@@ -944,8 +1008,34 @@ class App(tk.Tk):
         self.free_agents.set_rows(rows, tags)
         self.fa_head.set(f"Free agents  ·  {upgrades} would upgrade your roster")
 
+    def _fill_partners(self):
+        d = self.data
+        self._partners = d.get("partners") or []
+        rows, tags = [], []
+        for x in self._partners:
+            fixes = [trade.describe_fix(x["fixes_mine"])] if x["fixes_mine"] else []
+            if x["fixes_theirs"]:
+                fixes.append(trade.describe_fix(x["fixes_theirs"], "their"))
+            rows.append((x["team"].team_name.strip(), x["give"].name, x["get"].name, ", ".join(fixes),
+                         f"{x['me']:+.1f}", f"{x['them']:+.1f}"))
+            tags.append(("hot",) if x["fixes_mine"] and x["fixes_theirs"] else ())
+        self.partners.set_rows(rows or [("No fair fixes found right now.", "", "", "", "", "")], tags or None,
+                               [str(i) for i in range(len(rows))] or None)
+
+    def _open_partner(self, _values):
+        sel = self.partners.tree.selection()
+        if not sel or not sel[0].isdigit():
+            return
+        x = self._partners[int(sel[0])]
+        self.tl_a.set(self.data["me"].team_name)
+        self.tl_b.set(x["team"].team_name)
+        self.tl_send, self.tl_get = {x["give"].playerId}, {x["get"].playerId}
+        self.tabs.select(self.trade_lab_tab)
+        self._trade_render()
+
     def _fill_trades(self):
         d = self.data
+        self._fill_partners()
         rows = [(team.team_name, f"{give.player.name} ({give.baseline:.1f})", f"{get.player.name} ({get.baseline:.1f})",
                  f"+{gain:.1f}") for team, gain, give, get in d["trades"]]
         if not rows:
@@ -1236,6 +1326,11 @@ class App(tk.Tk):
 
     def _fill_news(self):
         d = self.data
+        ops = d.get("opportunities") or []
+        self.opp_table.set_rows([(o["player"].name, o["player"].proTeam, f"{o['form'].worth:.1f}",
+                                  f"{o['boosted']:.1f}", o["short"]) for o in ops[:25]]
+                                or [("Nobody right now.", "", "", "", "")],
+                                [("hot",) if o["boosted"] - o["form"].worth >= 5 else () for o in ops[:25]] or None)
         injuries, league = d.get("injuries") or {}, d["league"]
         owner = {p.playerId: (p, t) for t in league.teams for p in t.roster}
         scope = self.news_scope.current()
@@ -1371,6 +1466,7 @@ class App(tk.Tk):
         txt.delete("1.0", "end")
         txt.insert("end", trade.verdict(r) + "\n", "verdict")
         gl = r["games_left"]
+        injuries = self.data.get("injuries") or {}
         for key, tag in (("a", "a"), ("b", "b")):
             s = r[key]
             gives = r["sent"] if key == "a" else r["got"]
@@ -1378,7 +1474,17 @@ class App(tk.Tk):
             txt.insert("end", f"{s['team'].team_name}\n", tag)
             txt.insert("end", f"Lineup {s['before']:.1f} -> {s['after']:.1f} fp/g ({s['delta']:+.1f})   "
                               f"rank #{s['rank_before']} -> #{s['rank_after']}\n", "body")
-            txt.insert("end", f"About {s['delta'] * gl:+.0f} season points over the ~{gl} games left\n", "body")
+            look = trade.outlook(league, s["team"], {f.player.playerId for f in gives}, [f.player for f in gets],
+                                 injuries) if (gives or gets) else None
+            if look and look["before"] is not None:
+                txt.insert("end", f"Next 30 days: {look['before']:,.0f} -> {look['after']:,.0f} pts "
+                                  f"({look['after'] - look['before']:+.0f})   ·   season {s['delta'] * gl:+.0f}\n", "body")
+            else:
+                txt.insert("end", f"About {s['delta'] * gl:+.0f} season points over the ~{gl} games left\n", "body")
+            if look and look["fixed"]:
+                txt.insert("end", "Fixes " + trade.describe_fix(look["fixed"], "its") + "\n", "good")
+            if look and look["created"]:
+                txt.insert("end", "Creates: " + ", ".join(look["created"]) + "\n", "warn")
             if gives or gets:
                 txt.insert("end", "Gives: " + (", ".join(f"{f.player.name} ({f.baseline:.1f})" for f in gives) or "nothing")
                            + "\nGets: " + (", ".join(f"{f.player.name} ({f.baseline:.1f})" for f in gets) or "nothing")

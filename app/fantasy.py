@@ -18,7 +18,7 @@ Add --demo before the command to run against made-up data without an ESPN league
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import stats
@@ -132,13 +132,18 @@ def describe_problem(kind, pos, names):
 
 
 def unbalances(players, add=(), drop=()):
-    """The balance problems a move would create that your roster doesn't already have, as text.
+    """The balance problems a move would create or make worse, as text.
     [] means the move is fine (it may still leave an existing problem as it is)."""
     drop_ids = {p.playerId for p in drop}
     after = [p for p in players if p.playerId not in drop_ids] + list(add)
     before = balance_problems(players)
+
+    def worse(kind, pos, names):  # new, or an existing problem made worse (a 5th PG, or 0 C instead of 1)
+        if (kind, pos) not in before:
+            return True
+        return len(names) > len(before[(kind, pos)]) if kind == "many" else len(names) < len(before[(kind, pos)])
     return [describe_problem(k, pos, names) for (k, pos), names in balance_problems(after).items()
-            if (k, pos) not in before]
+            if worse(k, pos, names)]
 
 
 def balance_alerts(my_team):
@@ -241,6 +246,47 @@ def upgrade_over(fa, droppable, roster, t, ahead=None):
             continue
         return d
     return None
+
+
+def opportunity_alerts(league, mine, injuries, t, leaving=(), ahead=None, limit=2):
+    """A teammate's injury (or a bigger role) makes a free agent better than one of your players.
+    Uses the same upgrade rule as pickups, at his boosted value."""
+    import opportunity
+    keep = load_keep() | set(leaving)
+    droppable = sorted((f for f in mine if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
+                       key=lambda f: f.worth)
+    roster = [f.player for f in mine]
+    alerts = []
+    for o in opportunity.opportunities(league, injuries):
+        boosted = replace(o["form"], baseline=o["boosted"], recent=o["boosted"])
+        drop = upgrade_over(boosted, droppable, roster, t, ahead=None)  # 30 days at the boost overstates a short absence
+        if not drop:
+            continue
+        droppable.remove(drop)
+        p = o["player"]
+        alerts.append(Alert(f"opp:{p.playerId}:{drop.player.playerId}", 2,
+                            f"Opportunity: {p.name} ({p.proTeam}) - {o['reason']}",
+                            f"{fmt(o['form'])} usually {o['form'].worth:.1f} a game; with about {o['extra_min']:.0f} "
+                            f"more minutes, more like {o['boosted']:.1f}.\n      That beats {fmt(drop)} "
+                            f"({drop.worth:.1f}). Free agents like this get picked up fast."))
+        if len(alerts) >= limit:
+            break
+    return alerts
+
+
+def minutes_alerts(mine, year, drop=5):
+    """One of your players is playing a lot less this week than usual: often a lost role."""
+    import opportunity
+    alerts = []
+    for f in mine:
+        trend = opportunity.minutes_trend(f.player, year)
+        if trend is not None and trend <= -drop and f.healthy:
+            usual = opportunity.minutes(f.player, year)
+            alerts.append(Alert(f"minutes:{f.player.playerId}:{round(trend)}", 3,
+                                f"{f.player.name}'s minutes are down ({trend:+.0f} a game this week)",
+                                f"{fmt(f)} usually plays about {usual:.0f} minutes. Check the news: a smaller "
+                                "role costs fantasy points every game until it changes."))
+    return alerts
 
 
 def next_30_days(league, injuries):
@@ -422,6 +468,7 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
     alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds, leaving, ahead) + \
         balance_alerts(my_team)
     if real:
+        alerts += opportunity_alerts(league, mine, injuries, thresholds, leaving) + minutes_alerts(mine, league.year)
         alerts += (status_alerts(mine, injuries) + lineup_alerts(league, my_team, injuries)
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))
     alerts += trade_alerts(mine, others, thresholds, leaving)

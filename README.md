@@ -45,10 +45,18 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   the rest of the season: his remaining games vs the dropped player's, at their base value).
   The **matchup** column shows how much a game is worth vs his normal average (see below)
 - **News**: ESPN's injury report for your team, every rostered player or every injured NBA
-  player, with expected return dates; click a player for the full note and latest news
+  player, with expected return dates; click a player for the full note and latest news. Beside it,
+  **Opportunities**: free agents set to play more because a teammate is out (his minutes are shared
+  by up to 3 healthy teammates at his positions; the gain is their points per minute x the extra
+  minutes, damped to 75% and capped at +60%) or because their minutes are rising this week
+- **Schedule**: NBA games per day for the next two weeks (light days in amber) and a grid of
+  games per team per week for six weeks, with your players and the best free agents on each team;
+  hover a cell for the dates and opponents
 - **Free Agents & Trades**: two halves side by side. Left, the top 100 available players; green
   ones beat your weakest player per game and over the next 30 days (**next 30d**). Right, up to 3
-  trade ideas per team, best gain first
+  trade ideas per team, best gain first, and **trade partners**: fair one-for-one swaps (within about
+  10% in value) that fix a position imbalance for you, for them or both, without either starting
+  lineup getting worse. Double-click one to open it in Trade Lab
 
 **Matchups.** Projections for a specific game are nudged by the opponent, using the
 total-points method: a game's possessions = pace A x pace B / league pace, and a team scores its
@@ -60,7 +68,8 @@ blended toward this season as games are played; cached daily in `data\team_ratin
 the daily lineups, streamers, projected totals and the 30-day pickup check.
 - **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
   team's lineup strength (per-game value of its best 10 starters) before and after, the change in
-  league rank, roughly how many season points it's worth over the games left, roster-size and
+  league rank, expected points over the **next 30 days** for both teams (daily best lineups with
+  schedule, injuries and matchups), which position imbalances it fixes or creates, roster-size and
   position changes, a verdict on whether they'd accept, and where every team stands afterwards.
   The **even-it-out list** updates as you tick: with players picked it suggests adding 1-2 more
   (from either side) so both teams come out even; with nothing picked it lists fair 1-2 player
@@ -161,6 +170,8 @@ The alerts:
 | Check if X is IR-eligible | He's listed O and out beyond this week: O players can go on IR only once ESPN marks them IR-eligible, which ESPN doesn't publish to apps, so check his card on ESPN |
 | Stream X | A free agent would add 15+ points over the next 7 days |
 | Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days (his schedule x how often ESPN expects him to play) |
+| Opportunity | A free agent's teammate is out (or his minutes are up) and at his boosted value he beats one of your players |
+| Minutes down | One of your players is playing 5+ fewer minutes a game this week than usual (often a smaller role) |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Roster balance | You have more than 3 or fewer than 2 players at a main position (e.g. 4 PGs, or 1 C). IR players count toward "too many" but not "too few" |
 
