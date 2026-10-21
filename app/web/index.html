@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fantasy Hoops</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="ball"></div>
+    <div><h1 id="league">Fantasy Hoops</h1><div class="sub" id="league-sub">Fantasy Hoops</div></div>
+  </div>
+  <div class="actions">
+    <span class="status" id="status">Loading from ESPN…</span>
+    <button class="btn primary" id="refresh">Refresh</button>
+  </div>
+</header>
+<nav id="tabs"></nav>
+<main id="view"></main>
+<div class="tip" id="tip"></div>
+<script src="app.js"></script>
+</body>
+</html>

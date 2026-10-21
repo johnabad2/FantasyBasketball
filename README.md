@@ -18,7 +18,9 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 
 ```
 Fantasy Hoops.bat   double-click to open the window
-app/                all the Python code (main.py = the window, fantasy.py = commands + alerts)
+Fantasy Hoops (new).bat   the new-look app (being built tab by tab)
+app/                all the Python code (main.py = the window, webapp.py + web/ = the new-look app,
+                    loader.py = loading from ESPN for both, fantasy.py = commands + alerts)
 config/             config.json (your ESPN cookies, never committed), nicknames.json, requirements
 scripts/            check.ps1, run by the scheduled task
 data/               exports, history, cached photos, check log (stays on your PC)
@@ -26,6 +28,19 @@ data/               exports, history, cached photos, check log (stays on your PC
 
 Keep `app/`, `config/` and `scripts/` where they are relative to each other; the code finds
 its config and data from its own location.
+
+## The new-look app (in progress)
+
+The app is moving to a modern web-style design that opens in its own window. Double-click
+**`Fantasy Hoops (new).bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use
+your web browser instead, `--demo` for the made-up league). **Standings** and **My Team** are done:
+sortable tables (click a header), player photos, live points, a rank-by-week chart you can hover, and
+a star to keep players. The other tabs are still in the original window below, which keeps working
+until everything has moved over.
+
+Under the hood a small local server (`app\webapp.py`, only reachable from this PC) loads the league
+with the same code as the original window (`app\loader.py`) and hands the page its data as JSON;
+the page is plain HTML/CSS/JavaScript in `app\web\` with ECharts for the charts.
 
 ## The window
 
