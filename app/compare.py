@@ -54,13 +54,14 @@ def axes_for(mode, rules):
 
 
 def fmt(v, key=""):
+    v = 0.0 if abs(v) < 0.05 else v  # no "-0.0"
     if key in ("FG%", "FT%"):
         return f"{v:.0f}%"
     return f"{v:.1f}"
 
 
 class ParallelChart(tk.Canvas):
-    PAD_L, PAD_R, PAD_T, PAD_B = 64, 52, 56, 78
+    PAD_L, PAD_R, PAD_T, PAD_B = 64, 52, 56, 86
 
     def __init__(self, parent, **kw):
         super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground=C["chart_border"], **kw)
@@ -143,10 +144,12 @@ class ParallelChart(tk.Canvas):
                 if (i == 0 and x - self.PAD_L < 20) or (i == 1 and w - self.PAD_R - x < 20 and n > 1):
                     side, anchor = (-side, "w" if anchor == "e" else "e")
                     y += 14 if i == 0 else -14
+                if y > h - self.PAD_B - 8:
+                    y -= 12  # at the bottom of an axis: keep clear of the axis's own minimum label
                 self.create_text(x + side, y, text=fmt(vals.get(key, 0), key), anchor=anchor,
                                  fill=INK_2, font=(FONT, 8, "bold"))
         if self.note:
-            self.create_text(self.PAD_L - 30, h - 8, text=self.note, anchor="w", fill=MUTED, font=(FONT, 8))
+            self.create_text(self.PAD_L - 30, h - 12, text=self.note, anchor="w", fill=MUTED, font=(FONT, 8))
 
     def _marker(self, x, y, i):
         r = 5

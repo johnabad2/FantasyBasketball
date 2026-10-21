@@ -600,13 +600,13 @@ class App(tk.Tk):
 
         bottom = ttk.Frame(f)
         bottom.pack(fill="both", expand=True, pady=(12, 0))
-        side = ttk.Frame(bottom, width=430)
+        side = ttk.Frame(bottom, width=470)
         side.pack(side="right", fill="y", padx=(14, 0))
         side.pack_propagate(False)
         self.breakdown_head = tk.StringVar()
         ttk.Label(side, textvariable=self.breakdown_head, style="Sub.TLabel").pack(anchor="w", pady=(0, 2))
         self.breakdown = Table(side, ("stat", "per game", "pts each", "fantasy pts"), text_cols=("stat",),
-                               widths={"stat": 64, "per game": 88, "pts each": 84, "fantasy pts": 104})
+                               widths={"stat": 64, "per game": 96, "pts each": 92, "fantasy pts": 112})
         self.breakdown.pack(fill="both", expand=True)
         self.breakdown.tree.bind("<<TreeviewSelect>>", self._breakdown_clicked)
 
