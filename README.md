@@ -31,7 +31,7 @@ its config and data from its own location.
 
 Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`). Tabs:
 
-- **Standings** (points update live while games are on, ranked automatically; below it a week-by-week rank chart with your team highlighted - hover a week for that week's table), **My Team** (alerts + roster form). The roster shows whether each player is
+- **Standings** (points update live while games are on, ranked automatically, with a live **today** column; below it a week-by-week rank chart with your team highlighted - hover a week for that week's table), **My Team** (alerts + roster form). The roster shows whether each player is
   **in your lineup or on your bench**, **their NBA game today** (your local time), and their
   **NBA role**: how many of their last 5 games they started, from ESPN box scores (preseason
   until the regular season has games). If a bench player plays today and a starter doesn't,
@@ -46,8 +46,9 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   The **matchup** column shows how much a game is worth vs his normal average (see below)
 - **News**: ESPN's injury report for your team, every rostered player or every injured NBA
   player, with expected return dates; click a player for the full note and latest news
-- **Free Agents**: the top 100 available players; green ones beat your weakest player per game
-  and over the next 30 days (**next 30d**)
+- **Free Agents & Trades**: two halves side by side. Left, the top 100 available players; green
+  ones beat your weakest player per game and over the next 30 days (**next 30d**). Right, up to 3
+  trade ideas per team, best gain first
 
 **Matchups.** Projections for a specific game are nudged by the opponent, using the
 total-points method: a game's possessions = pace A x pace B / league pace, and a team scores its
@@ -57,7 +58,6 @@ defensive rating / league average - 1))`, capped at ±10%. Pace counts fully, de
 defence gives up points, not rebounds or steals). Ratings come from ESPN's team stats: last season,
 blended toward this season as games are played; cached daily in `data\team_ratings.json`. It feeds
 the daily lineups, streamers, projected totals and the 30-day pickup check.
-- **Trades**: up to 3 trade ideas per team, best gain first
 - **Trade Lab**: build any trade between any two teams by ticking players on each side. Shows each
   team's lineup strength (per-game value of its best 10 starters) before and after, the change in
   league rank, roughly how many season points it's worth over the games left, roster-size and
@@ -147,7 +147,8 @@ the more history you get. `data\` stays on your PC; it's in `.gitignore`.
   projection until the player has 10 games. Category leagues use a rough composite of the
   counting stats instead.
 - **L15**: average over the last 15 days.
-- **trend**: L15 against base. ±25% or more counts as hot or slumping (after 5 games).
+- **trend**: L15 against base. ±25% or more counts as hot or slumping (after 5 games); shown in
+  green or red on My Team rather than as an alert.
 
 The alerts:
 
@@ -161,8 +162,6 @@ The alerts:
 | Stream X | A free agent would add 15+ points over the next 7 days |
 | Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days (his schedule x how often ESPN expects him to play) |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
-| Sell high | Your player is 25%+ above their base right now |
-| Slumping | Your player is 25%+ below base. Usually hold, don't panic-sell |
 | Roster balance | You have more than 3 or fewer than 2 players at a main position (e.g. 4 PGs, or 1 C). IR players count toward "too many" but not "too few" |
 
 Tune any of these under `thresholds` in `config\config.json`.

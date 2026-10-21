@@ -351,7 +351,6 @@ class App(tk.Tk):
         self._my_team_tab()
         self.week_tab = self._week_tab()
         self._free_agents_tab()
-        self._trades_tab()
         self._trade_lab_tab()
         self.league_tab = self._league_tab()
         self.player_tab = self._player_tab()
@@ -367,11 +366,11 @@ class App(tk.Tk):
 
     def _standings_tab(self):
         f = self._tab("Standings")
-        self.standings = Table(f, ("team", "owner", "points", "behind", "change", "proj final", "proj rank"),
+        self.standings = Table(f, ("team", "owner", "points", "today", "behind", "proj final", "proj rank"),
                                text_cols=("team", "owner"), wide=("team", "owner"), height=10,
                                on_open=lambda v: self.show_team(v[0]))
         self.standings.pack(fill="x")
-        ttk.Label(f, text="Points include games in progress.  ·  Double-click a team to see its roster.  ·  "
+        ttk.Label(f, text="Points include games in progress; today = scored so far today.  ·  Double-click a team to see its roster.  ·  "
                           "proj final = projected season total.",
                   style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
         self.rank_chart = RankChart(f, height=360)
@@ -492,28 +491,31 @@ class App(tk.Tk):
         return f
 
     def _free_agents_tab(self):
-        f = self._tab("Free Agents")
+        """Free agents on the left half, trade ideas on the right: every way to improve your roster."""
+        f = self._tab("Free Agents & Trades")
+        f.columnconfigure(0, weight=1, uniform="half")
+        f.columnconfigure(1, weight=1, uniform="half")
+        f.rowconfigure(0, weight=1)
+        left, right = ttk.Frame(f), ttk.Frame(f)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+
         self.fa_head = tk.StringVar()
-        ttk.Label(f, textvariable=self.fa_head, font=(FONT[0], 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Green = better than one of your players, per game and over the next 30 days.  ·  "
-                          "next 30d = expected points (worth x games he's expected to play).",
+        ttk.Label(left, textvariable=self.fa_head, font=(FONT[0], 12, "bold")).pack(anchor="w")
+        ttk.Label(left, text="worth = pts per game  ·  Green = better than one of yours, per game and over 30 days.",
                   style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
-        self.free_agents = Table(f, ("player", "pos", "nba", "status", "gp", "base", "L15", "trend",
-                                     "vs proj", "worth", "next 30d", "drop for them", "gain"),
+        self.free_agents = Table(left, ("player", "pos", "nba", "status", "worth", "next 30d", "drop for them", "gain"),
                                  text_cols=("player", "pos", "nba", "status", "drop for them"),
-                                 wide=("player", "drop for them"), on_open=lambda v: self.show_player(v[0]))
+                                 wide=("player", "drop for them"), widths={"player": 170, "drop for them": 150},
+                                 on_open=lambda v: self.show_player(v[0]))
         self.free_agents.pack(fill="both", expand=True)
 
-    def _trades_tab(self):
-        f = self._tab("Trades")
-        ttk.Label(f, text="Trade ideas", font=(FONT[0], 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Better players whose recent form makes the swap look fair to them.",
+        ttk.Label(right, text="Trade ideas", font=(FONT[0], 12, "bold")).pack(anchor="w")
+        ttk.Label(right, text="Better players whose recent form makes the swap look fair to them.",
                   style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
-        self.trades = Table(f, ("team", "owner", "you send", "send base", "send L15",
-                                "you get", "get base", "get L15", "gain/g"),
-                            text_cols=("team", "owner", "you send", "you get"),
-                            wide=("team", "you send", "you get"),
-                            on_open=lambda v: self.show_player(v[5]) if v[6] else None)
+        self.trades = Table(right, ("team", "you send", "you get", "gain/g"),
+                            text_cols=("team", "you send", "you get"), wide=("team", "you send", "you get"),
+                            on_open=lambda v: self.show_player(v[2]) if v[3] else None)
         self.trades.pack(fill="both", expand=True)
 
     def _player_tab(self):
@@ -777,7 +779,6 @@ class App(tk.Tk):
             league = fantasy.connect(cfg)
         rules = stats.scoring_rules(league)
         me = fantasy.my_team(league, cfg)
-        prev, prev_day = stats.previous_points()
         if not self.demo:
             stats.snapshot(league, rules)
         try:
@@ -792,13 +793,15 @@ class App(tk.Tk):
         projected = projections.projected_final(league)
         scores = stats.season_scores(league)
         live, weekly = stats.live_points(league, scores), stats.weekly_standings(league, scores)
+        day = getattr(league, "current_week", 1) or 1
+        today_pts = {tid: days.get(day, 0.0) for tid, (_, days) in scores.items()}  # live, games in progress
         real = bool(getattr(league, "pro_schedule", None))
         injuries = news.injuries() if real else {}
         values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in me.roster}
         plan = dict(week=planner.week(league, me.roster, values, injuries) if real else [],
                     moves=planner.today_moves(league, me, injuries),
                     streamers=planner.streamers(league, me, fas, injuries))
-        return dict(league=league, cfg=cfg, rules=rules, me=me, prev=prev, prev_day=prev_day, projected=projected, live=live, weekly=weekly,
+        return dict(league=league, cfg=cfg, rules=rules, me=me, today_pts=today_pts, projected=projected, live=live, weekly=weekly,
                     injuries=injuries, plan=plan,
                     alerts=fantasy.build_alerts(league, me, cfg["thresholds"], analysis, injuries),
                     mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
@@ -841,10 +844,10 @@ class App(tk.Tk):
         rows, tags = [], []
         for i, t in enumerate(teams, 1):
             pts = self._pts(t)
-            change = f"{pts - d['prev'][t.team_id]:+.1f}" if t.team_id in d["prev"] else "-"
+            today = (d.get("today_pts") or {}).get(t.team_id)
             final = f"{proj[t.team_id][2]:,.0f}" if t.team_id in proj else "-"
-            rows.append((t.team_name, owner_names(t), f"{pts:.1f}",
-                         f"{lead - pts:.1f}" if i > 1 else "-", change, final,
+            rows.append((t.team_name, owner_names(t), f"{pts:.1f}", f"+{today:.1f}" if today is not None else "-",
+                         f"{lead - pts:.1f}" if i > 1 else "-", final,
                          f"#{proj_rank[t.team_id]}" if t.team_id in proj_rank else "-"))
             tags.append(("me",) if t.team_id == d["me"].team_id else ())
         self.standings.set_rows(rows, tags)
@@ -925,7 +928,6 @@ class App(tk.Tk):
         keep = fantasy.load_keep() | (feed.leaving(league, d["me"].team_id) if real else set())
         droppable = sorted((f for f in d["mine"] if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
                            key=lambda f: f.worth)
-        worst = droppable[0] if droppable else None
         roster = [f.player for f in d["mine"]]
         ahead = fantasy.next_30_days(league, d["injuries"]) if real else None
         rows, tags, upgrades = [], [], 0
@@ -935,27 +937,20 @@ class App(tk.Tk):
             beats = fantasy.upgrade_over(fa, droppable, roster, t, ahead)
             upgrades += bool(beats)
             nxt = ahead(fa) if ahead else None
-            trusted = fa.games >= t["min_games"]
-            vp = projections.vs_projection(p, d["league"].year, d["rules"])
-            rows.append((p.name, p.position, p.proTeam, status_text(p), fa.games, f"{fa.baseline:.1f}",
-                         f"{fa.recent:.1f}", f"{fa.trend:+.0%}" if trusted else "-",
-                         f"{vp:+.1f}" if vp is not None else "-", f"{fa.worth:.1f}",
+            rows.append((p.name, p.position, p.proTeam, status_text(p), f"{fa.worth:.1f}",
                          f"{nxt[0]:.0f}" if nxt else "-",
                          beats.player.name if beats else "", f"+{fa.worth - beats.worth:.1f}" if beats else ""))
             tags.append((status_tag(p) or ("hot" if beats else ""),))
         self.free_agents.set_rows(rows, tags)
-        floor = f"your weakest is {worst.player.name} at {worst.worth:.1f}" if worst else ""
-        self.fa_head.set(f"Top {len(rows)} available players  ·  {upgrades} would upgrade your roster  ·  {floor}")
+        self.fa_head.set(f"Free agents  ·  {upgrades} would upgrade your roster")
 
     def _fill_trades(self):
         d = self.data
-        rows = [(team.team_name, owner_names(team), give.player.name, f"{give.baseline:.1f}", f"{give.recent:.1f}",
-                 get.player.name, f"{get.baseline:.1f}", f"{get.recent:.1f}", f"+{gain:.1f}")
-                for team, gain, give, get in d["trades"]]
+        rows = [(team.team_name, f"{give.player.name} ({give.baseline:.1f})", f"{get.player.name} ({get.baseline:.1f})",
+                 f"+{gain:.1f}") for team, gain, give, get in d["trades"]]
         if not rows:
             n = d["cfg"]["thresholds"]["min_games"]
-            rows = [("No trade ideas right now.", "", f"Needs players with {n}+ games played,", "", "",
-                     "so expect these once the season is a week or two in.", "", "", "")]
+            rows = [("No trade ideas yet.", f"Needs {n}+ games played,", "so check back in a week or two.", "")]
         self.trades.set_rows(rows)
 
     def _fill_league(self):

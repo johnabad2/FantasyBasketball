@@ -201,24 +201,6 @@ def injury_alerts(mine, injuries=None):
     return alerts
 
 
-def form_alerts(mine, t):
-    alerts = []
-    for f in mine:
-        if f.games < t["min_games"] or not f.healthy:
-            continue
-        if f.trend <= -t["trend_pct"]:
-            alerts.append(Alert(f"slump:{f.player.playerId}", 3,
-                                f"{f.player.name} is slumping ({f.trend:+.0%})",
-                                f"{fmt(f)}: {nums(f)}. If the baseline is solid, hold: "
-                                "selling now gets you the least back."))
-        elif f.trend >= t["trend_pct"]:
-            alerts.append(Alert(f"hot:{f.player.playerId}", 2,
-                                f"Sell-high window: {f.player.name} ({f.trend:+.0%})",
-                                f"{fmt(f)}: {nums(f)}. Other managers see the hot streak, "
-                                "so this is when they're worth the most in a trade."))
-    return alerts
-
-
 def load_keep():
     """Player ids you never want suggested as a drop or as trade bait (config/keep.json)."""
     try:
@@ -442,7 +424,7 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
     if real:
         alerts += (status_alerts(mine, injuries) + lineup_alerts(league, my_team, injuries)
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))
-    alerts += trade_alerts(mine, others, thresholds, leaving) + form_alerts(mine, thresholds)
+    alerts += trade_alerts(mine, others, thresholds, leaving)
     return sorted(alerts, key=lambda a: a.priority)
 
 

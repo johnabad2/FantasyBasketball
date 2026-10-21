@@ -33,28 +33,46 @@ def table(rows, headers):
         print(line(r))
 
 
+def _day_scores(league, day):
+    """({team id: points on that scoring day}, {team id: season total incl. games in progress})."""
+    data = league.espn_request.league_get(params={"view": ["mMatchupScore", "mLiveScoring"], "scoringPeriodId": day})
+    points, totals = {}, {}
+    for matchup in data.get("schedule", []):
+        for side in matchup.get("teams", []):
+            points[side["teamId"]] = (side.get("rosterForCurrentScoringPeriod") or {}).get("appliedStatTotal") or 0.0
+            totals[side["teamId"]] = side.get("totalPointsLive") or 0.0
+    return points, totals
+
+
 def season_scores(league):
     """{fantasy team id: (season points including games in progress, {scoring day: points})}.
-    ESPN only adds a day's points to the standings once the day is over; the matchup's live total
-    has them as they happen, so today's points = live total minus the finished days. Falls back to
-    the standings points (no daily breakdown) if ESPN can't be reached, or in the demo."""
+    ESPN only adds a day's points to the standings once the day is over, and doesn't fill in its own
+    per-day breakdown for this league, so each day is asked for separately. Finished days never
+    change, so they're cached in data/daily_points.json and only today is fetched each refresh.
+    Falls back to the standings points (no daily breakdown) if ESPN can't be reached, or in the demo."""
     out = {t.team_id: (t.points_for, {}) for t in league.teams}
     if not getattr(league, "pro_schedule", None):
         return out
+    path = DATA / "daily_points.json"
     try:
-        data = league.espn_request.league_get(params={"view": ["mMatchupScore", "mLiveScoring"]})
+        cache = json.loads(path.read_text())
+    except (OSError, ValueError):
+        cache = {}
+    season = cache.setdefault(str(league.year), {})
+    today = getattr(league, "current_week", 1) or 1
+    try:
+        for day in range(1, today):
+            if str(day) not in season:
+                season[str(day)] = {str(k): v for k, v in _day_scores(league, day)[0].items()}
+        now, totals = _day_scores(league, today)
     except Exception:
         return out
-    today = getattr(league, "current_week", 1) or 1
-    for matchup in data.get("schedule", []):
-        for side in matchup.get("teams", []):
-            tid = side.get("teamId")
-            if tid not in out:
-                continue
-            days = {int(d): pts for d, pts in (side.get("pointsByScoringPeriod") or {}).items() if int(d) < today}
-            live = max(out[tid][0], side.get("totalPointsLive") or 0)
-            days[today] = max(live - sum(days.values()), 0)
-            out[tid] = (live, days)
+    DATA.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cache))
+    for tid in out:
+        days = {int(d): pts.get(str(tid), 0.0) for d, pts in season.items()}
+        days[today] = now.get(tid, 0.0)
+        out[tid] = (max(out[tid][0], totals.get(tid, 0.0), sum(days.values())), days)
     return out
 
 
