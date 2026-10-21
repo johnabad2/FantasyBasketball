@@ -68,8 +68,16 @@ def player_news(pid, limit=3):
             when = datetime.fromisoformat(when.replace("Z", "+00:00")).astimezone()
         except ValueError:
             when = None
-        out.append({"published": when, "headline": item.get("headline", ""), "story": item.get("story", "")})
+        out.append({"published": when, "headline": plain_text(item.get("headline", ""), 200),
+                    "story": plain_text(item.get("story", ""))})
     return out
+
+
+def plain_text(text, limit=600):
+    """ESPN stories sometimes come as HTML: keep just the words, and not too many of them."""
+    import html
+    text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", text or "")).split())
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
 
 
 def track_statuses(players):

@@ -6,7 +6,7 @@ const TABS = [
   ["free-agents", "Free Agents & Trades"], ["trade-lab", "Trade Lab"], ["league", "League"], ["player", "Player"],
   ["compare", "Compare"], ["news", "News"], ["activity", "Activity"],
 ];
-const READY = new Set(["standings", "my-team", "week", "schedule"]);  // tabs moved over from the desktop app so far
+const READY = new Set(TABS.map(([id]) => id));  // every tab has moved over  // tabs moved over from the desktop app so far
 const ME = "#f26b1d", OTHER = "#4b5563", MUTED = "#8ea0b8", GRID = "#1c2636";
 
 let state = null;
@@ -71,8 +71,9 @@ function render() {
     view.innerHTML = `<div class="card empty">${state.error ? esc(state.error) : "Loading your league from ESPN…"}</div>`;
     return;
   }
-  ({ "standings": renderStandings, "my-team": renderMyTeam, "week": renderWeek, "schedule": renderSchedule }[tab]
-    || renderSoon)(view, tab);
+  ({ "standings": renderStandings, "my-team": renderMyTeam, "week": renderWeek, "schedule": renderSchedule,
+     "free-agents": renderFreeAgents, "trade-lab": renderTradeLab, "league": renderLeague, "player": renderPlayer,
+     "compare": renderCompare, "news": renderNews, "activity": renderActivity }[tab] || renderSoon)(view, tab);
 }
 
 function renderSoon(view, tab) {
@@ -98,7 +99,7 @@ function table(el, cols, rows, { sort = null, desc = true, rowClass = () => "" }
     }) : rows;
     el.innerHTML = `<div class="scroll"><table><thead><tr>${cols.map((c) =>
       `<th data-k="${c.key}" class="${c.num ? "n" : ""} ${by === c.key ? "sorted" + (down ? "" : " asc") : ""}">${esc(c.label)}</th>`).join("")}
-      </tr></thead><tbody>${sorted.map((r) => `<tr class="${rowClass(r)}">${cols.map((c) =>
+      </tr></thead><tbody>${sorted.map((r) => `<tr class="${rowClass(r)}" data-i="${rows.indexOf(r)}">${cols.map((c) =>
       `<td class="${c.num ? "n" : ""} ${c.cls ? c.cls(r) : ""}">${c.html ? c.html(r) : esc(r[c.key] ?? "-")}</td>`).join("")}</tr>`).join("")}
       </tbody></table></div>`;
     el.querySelectorAll("th").forEach((th) => th.onclick = () => {
@@ -209,7 +210,7 @@ function renderMyTeam(view) {
     { key: "kept", label: "Keep", num: false, html: (p) =>
       `<button class="star ${p.kept ? "on" : ""}" data-id="${p.id}" data-keep="${!p.kept}" title="${p.kept ? "Kept: click to unkeep" : "Keep him"}">${p.kept ? "★" : "☆"}</button>` },
     { key: "name", label: "Player", num: false, html: (p) =>
-      `<div class="who"><div class="face" style="background-image:url(/photo/${p.id})"></div><div>${esc(p.name)}<div class="sub">${esc(p.pos)} · ${esc(p.nba)}</div></div></div>` },
+      `<div class="who"><div class="face" style="background-image:url(/photo/${p.id})"></div><div>${link(p.name)}<div class="sub">${esc(p.pos)} · ${esc(p.nba)}</div></div></div>` },
     { key: "lineup", label: "Your lineup", num: false, html: (p) =>
       `<span class="pill ${p.starting ? "start" : ""}">${esc(p.starting ? "starting " + p.lineup : p.lineup)}</span>` },
     { key: "game", label: "Today", num: false, html: (p) => p.game ? esc(p.game) : `<span class="muted">no game</span>` },
@@ -308,7 +309,7 @@ function renderWeek(view) {
 
 function playerCell(id, name, sub = "") {
   return `<div class="who"><div class="face sm" style="background-image:url(/photo/${id})"></div>
-    <div>${esc(name)}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div></div>`;
+    <div>${link(name)}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div></div>`;
 }
 
 // ------------------------------------------------------------------ Schedule

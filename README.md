@@ -29,19 +29,19 @@ data/               exports, history, cached photos, check log (stays on your PC
 Keep `app/`, `config/` and `scripts/` where they are relative to each other; the code finds
 its config and data from its own location.
 
-## The new-look app (in progress)
+## The new-look app
 
-The app is moving to a modern web-style design that opens in its own window. Double-click
-**`Fantasy Hoops (new).bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use
-your web browser instead, `--demo` for the made-up league). **Standings**, **My Team**, **Week Ahead** and
-**Schedule** are done:
-sortable tables (click a header), player photos, live points, a rank-by-week chart you can hover, and
-a star to keep players. The other tabs still live in the original window below (each one has an
-**Open the original window** button), which keeps working until everything has moved over.
+A modern web-style version of the window that opens in its own window. Double-click
+**`Fantasy Hoops (new).bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use your
+web browser instead, `--demo` for the made-up league). Every tab below is there, in a compact dark
+design: sortable tables (click a header), player photos, hoverable charts, and player names you can
+click anywhere to open that player's page. Trade Lab, Player, Compare, League and News work as you
+click; Trade partners open straight into Trade Lab.
 
 Under the hood a small local server (`app\webapp.py`, only reachable from this PC) loads the league
-with the same code as the original window (`app\loader.py`) and hands the page its data as JSON;
-the page is plain HTML/CSS/JavaScript in `app\web\` with ECharts for the charts.
+with the same code as the original window (`app\loader.py`) and hands the page its data as JSON
+(`appiews.py`, `appiews_more.py`); the page is plain HTML/CSS/JavaScript in `app\web\` with
+ECharts for the charts. The original window (`Fantasy Hoops.bat`) still works too.
 
 ## The window
 

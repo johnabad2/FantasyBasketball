@@ -21,6 +21,7 @@ import fantasy
 import lineup
 import loader
 import views
+import views_more
 
 WEB = Path(__file__).resolve().parent / "web"
 REFRESH_MIN = 15
@@ -43,7 +44,10 @@ class State:
             data = loader.load(self.demo)
             # pages that don't change until the next refresh are built once here, not on every poll
             self.pages = {"header": views.header(data), "standings": views.standings(data),
-                          "week": views.week_ahead(data), "schedule": views.schedule_view(data)}
+                          "week": views.week_ahead(data), "schedule": views.schedule_view(data),
+                          "fa": views_more.free_agents_trades(data), "teams": views_more.league_teams(data),
+                          "news": views_more.news_view(data), "activity": views_more.activity_view(data),
+                          "rosters": views_more.trade_rosters(data)}
             self.data, self.updated, self.error = data, datetime.now(), None
         except SystemExit as e:  # fantasy/stats explain user-facing problems this way
             self.error = str(e)
@@ -78,7 +82,13 @@ class State:
 
 
 def _json(obj):
-    return json.dumps(obj, default=lambda o: o.isoformat() if isinstance(o, (date, datetime)) else str(o)).encode()
+    def plain(o):
+        if isinstance(o, (date, datetime)):
+            return o.isoformat()
+        if isinstance(o, (set, frozenset, tuple)):
+            return sorted(o)
+        return str(o)
+    return json.dumps(obj, default=plain).encode()
 
 
 def handler_for(state):
@@ -95,9 +105,25 @@ def handler_for(state):
             self.wfile.write(body)
 
         def do_GET(self):
-            path = self.path.split("?")[0]
+            from urllib.parse import parse_qs, urlparse
+            url = urlparse(self.path)
+            path, q = url.path, {k: v[0] for k, v in parse_qs(url.query).items()}
             if path == "/api/state":
                 return self._send(_json(state.snapshot()))
+            ask = {  # pages that answer what you pick or type
+                "/api/league": lambda d: views_more.league_roster(d, int(q.get("team") or 0), q.get("split")),
+                "/api/player": lambda d: views_more.player(d, q.get("q", "")),
+                "/api/compare": lambda d: views_more.compare(d, q.get("a", ""), q.get("b", ""), q.get("split"),
+                                                             q.get("mode", "fantasy")),
+                "/api/news": lambda d: views_more.player_news(int(q.get("id") or 0)) if not state.demo else [],
+            }.get(path)
+            if ask:
+                if not state.data:
+                    return self._send(_json({"error": "Still loading from ESPN."}))
+                try:
+                    return self._send(_json(ask(state.data)))
+                except Exception as e:
+                    return self._send(_json({"error": f"{type(e).__name__}: {e}"}))
             if path.startswith("/photo/"):
                 pid = path.rsplit("/", 1)[-1]
                 photo = loader.headshot(pid) if pid.isdigit() and not state.demo else None
@@ -115,6 +141,9 @@ def handler_for(state):
             if self.path == "/api/refresh":
                 state.refresh_soon()
                 return self._send(_json({"ok": True}))
+            if self.path == "/api/trade" and state.data:
+                return self._send(_json(views_more.trade_lab(state.data, body.get("a"), body.get("b"),
+                                                             body.get("send") or [], body.get("get") or [])))
             if self.path == "/api/classic":  # open the original window for tabs not moved over yet
                 import subprocess
                 import sys
