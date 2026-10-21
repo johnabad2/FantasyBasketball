@@ -178,7 +178,7 @@ function rankChart(el, s) {
         name: n, type: "line", smooth: true, data: s.weeks.map((w) => w.ranks[n]), symbolSize: me ? 11 : 7, z: me ? 10 : 1,
         lineStyle: { width: me ? 4 : 2, color: me ? ME : OTHER, shadowBlur: me ? 14 : 0, shadowColor: ME },
         itemStyle: { color: me ? ME : OTHER }, emphasis: { focus: "series" },
-        endLabel: { show: true, formatter: (p) => `${p.value}. ${n}`, color: me ? "#fff" : MUTED, fontWeight: me ? "bold" : "normal" },
+        endLabel: { show: true, formatter: n, color: me ? "#fff" : MUTED, fontWeight: me ? "bold" : "normal" },  // places are on the left axis
       };
     }),
   });
