@@ -243,24 +243,57 @@ def set_keep(player, keep=True):
     return players
 
 
-def waiver_alerts(mine, free_agents, t, leaving=()):
+def upgrade_over(fa, droppable, roster, t, ahead=None):
+    """The weakest of your droppable players this free agent is a clear upgrade on, or None:
+    better per game by waiver_margin, no new position imbalance, and (when ahead(form) gives
+    (points, games) for the next 30 days) more expected points over those days too - so a player
+    with fewer games or more missed games isn't suggested just for his per-game number."""
+    if not fa.healthy:
+        return None
+    for d in droppable:  # weakest first
+        if fa.worth <= d.worth * (1 + t["waiver_margin"]):
+            return None  # the rest are even better per game
+        if unbalances(roster, [fa.player], [d.player]):
+            continue
+        if ahead and ahead(fa) and ahead(fa)[0] <= ahead(d)[0]:
+            continue
+        return d
+    return None
+
+
+def next_30_days(league, injuries):
+    """A cached form -> (expected points, expected games) over the next 30 days."""
+    import planner
+    cache = {}
+
+    def ahead(form):
+        if form.player.playerId not in cache:
+            cache[form.player.playerId] = planner.next_days(league, form, injuries, 30)
+        return cache[form.player.playerId]
+    return ahead
+
+
+def waiver_alerts(mine, free_agents, t, leaving=(), ahead=None):
+    """ahead(form) -> (points, games) over the next 30 days, or None (see planner.next_days)."""
     keep = load_keep() | set(leaving)  # never drop: kept, or in a trade that's going through
     droppable = sorted((f for f in mine if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
                        key=lambda f: f.worth)
     roster = [f.player for f in mine]
-    alerts, used = [], set()
-    # Best free agent vs your worst player, next best vs your second worst, and so on - skipping
-    # swaps that would unbalance your positions (e.g. a 4th PG, or no backup C).
+    alerts = []
+    # Best free agent vs your worst player, next best vs your second worst, and so on.
     for fa in sorted(free_agents, key=lambda f: f.worth, reverse=True):
         if len(alerts) >= min(t["max_waiver_alerts"], len(droppable)):
             break
-        worst = next((d for d in droppable if d.player.playerId not in used
-                      and not unbalances(roster, [fa.player], [d.player])), None)
-        if worst and fa.healthy and fa.worth > worst.worth * (1 + t["waiver_margin"]):
-            used.add(worst.player.playerId)
+        worst = upgrade_over(fa, droppable, roster, t, ahead)
+        if worst:
+            droppable.remove(worst)
+            detail = f"{fmt(fa)}: {nums(fa)}\n      vs {fmt(worst)}: {nums(worst)}"
+            if ahead and ahead(fa):
+                (fa_pts, fa_g), (d_pts, d_g) = ahead(fa), ahead(worst)
+                detail += (f"\n      Next 30 days: ~{fa_pts:.0f} pts ({fa_g:.0f} games expected) vs "
+                           f"~{d_pts:.0f} ({d_g:.0f}): {fa_pts - d_pts:+.0f}")
             alerts.append(Alert(f"fa:{fa.player.playerId}:{worst.player.playerId}", 1,
-                                f"Pick up {fa.player.name}, drop {worst.player.name}",
-                                f"{fmt(fa)}: {nums(fa)}\n      vs {fmt(worst)}: {nums(worst)}"))
+                                f"Pick up {fa.player.name}, drop {worst.player.name}", detail))
     return alerts
 
 
@@ -403,7 +436,9 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
         injuries = news.injuries() if real else {}
     import feed
     leaving = feed.leaving(league, my_team.team_id) if real else set()
-    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds, leaving) + balance_alerts(my_team)
+    ahead = next_30_days(league, injuries) if real else None
+    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds, leaving, ahead) + \
+        balance_alerts(my_team)
     if real:
         alerts += (status_alerts(mine, injuries) + lineup_alerts(league, my_team, injuries)
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))

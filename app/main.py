@@ -495,9 +495,11 @@ class App(tk.Tk):
         f = self._tab("Free Agents")
         self.fa_head = tk.StringVar()
         ttk.Label(f, textvariable=self.fa_head, font=(FONT[0], 12, "bold")).pack(anchor="w")
-        ttk.Label(f, text="Green = better than one of your players.", style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
+        ttk.Label(f, text="Green = better than one of your players, per game and over the next 30 days.  ·  "
+                          "next 30d = expected points (worth x games he's expected to play).",
+                  style="Sub.TLabel").pack(anchor="w", pady=(2, 8))
         self.free_agents = Table(f, ("player", "pos", "nba", "status", "gp", "base", "L15", "trend",
-                                     "vs proj", "worth", "drop for them", "gain"),
+                                     "vs proj", "worth", "next 30d", "drop for them", "gain"),
                                  text_cols=("player", "pos", "nba", "status", "drop for them"),
                                  wide=("player", "drop for them"), on_open=lambda v: self.show_player(v[0]))
         self.free_agents.pack(fill="both", expand=True)
@@ -919,19 +921,26 @@ class App(tk.Tk):
     def _fill_free_agents(self):
         d = self.data
         t = d["cfg"]["thresholds"]
-        droppable = sorted((f for f in d["mine"] if f.player.lineupSlot != "IR"), key=lambda f: f.worth)
+        league, real = d["league"], bool(getattr(d["league"], "pro_schedule", None))
+        keep = fantasy.load_keep() | (feed.leaving(league, d["me"].team_id) if real else set())
+        droppable = sorted((f for f in d["mine"] if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
+                           key=lambda f: f.worth)
         worst = droppable[0] if droppable else None
+        roster = [f.player for f in d["mine"]]
+        ahead = fantasy.next_30_days(league, d["injuries"]) if real else None
         rows, tags, upgrades = [], [], 0
         for fa in sorted(d["fas"], key=lambda f: -f.worth):
             p = fa.player
-            # The weakest player of yours this free agent clearly beats (start from your very worst).
-            beats = worst if worst and fa.healthy and fa.worth > worst.worth * (1 + t["waiver_margin"]) else None
+            # the weakest player of yours he's a clear upgrade on (same rule as the pickup alert)
+            beats = fantasy.upgrade_over(fa, droppable, roster, t, ahead)
             upgrades += bool(beats)
+            nxt = ahead(fa) if ahead else None
             trusted = fa.games >= t["min_games"]
             vp = projections.vs_projection(p, d["league"].year, d["rules"])
             rows.append((p.name, p.position, p.proTeam, status_text(p), fa.games, f"{fa.baseline:.1f}",
                          f"{fa.recent:.1f}", f"{fa.trend:+.0%}" if trusted else "-",
                          f"{vp:+.1f}" if vp is not None else "-", f"{fa.worth:.1f}",
+                         f"{nxt[0]:.0f}" if nxt else "-",
                          beats.player.name if beats else "", f"+{fa.worth - beats.worth:.1f}" if beats else ""))
             tags.append((status_tag(p) or ("hot" if beats else ""),))
         self.free_agents.set_rows(rows, tags)

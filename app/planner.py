@@ -121,8 +121,25 @@ def games_after(league, player, first_day, injuries):
     schedule (skipping games before an injured player's expected return) x the share of games
     ESPN expects him to play, so injury-prone players count for less."""
     final = getattr(league, "finalScoringPeriod", None) or 174
-    scheduled = sum(1 for day in range(first_day, final + 1) if _available(player, _game(league, player, day), injuries))
+    return expected_games(league, player, first_day, final, injuries)
+
+
+def expected_games(league, player, first_day, last_day, injuries):
+    """Games he's expected to play from `first_day` to `last_day` (scoring days, inclusive):
+    scheduled games he isn't injured for x the share of games ESPN expects him to play."""
+    scheduled = sum(1 for day in range(first_day, last_day + 1) if _available(player, _game(league, player, day), injuries))
     return scheduled * availability(player, league.year)
+
+
+def next_days(league, form, injuries, days=30):
+    """(expected fantasy points, expected games) over the next `days` days, at his 'worth'
+    (average of base and last 15 days). None without an NBA schedule (demo)."""
+    if not getattr(league, "pro_schedule", None):
+        return None
+    today = getattr(league, "current_week", 1) or 1
+    final = getattr(league, "finalScoringPeriod", None) or 174
+    games = expected_games(league, form.player, today, min(today + days - 1, final), injuries)
+    return form.worth * games, games
 
 
 def _day_date(league, day):

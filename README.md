@@ -148,7 +148,7 @@ The alerts:
 | Move X to IR | He's listed INJ (always IR-eligible), out beyond this week, and your IR slot is empty |
 | Check if X is IR-eligible | He's listed O and out beyond this week: O players can go on IR only once ESPN marks them IR-eligible, which ESPN doesn't publish to apps, so check his card on ESPN |
 | Stream X | A free agent would add 15+ points over the next 7 days |
-| Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ |
+| Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days (his schedule x how often ESPN expects him to play) |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Sell high | Your player is 25%+ above their base right now |
 | Slumping | Your player is 25%+ below base. Usually hold, don't panic-sell |
