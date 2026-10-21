@@ -250,9 +250,7 @@ function renderWeek(view) {
       <div class="card"><h2>Next 7 days</h2><div class="sub">click a day to see its lineup</div>
         <div class="days" id="wk-days"></div>
         <div class="note">${w.empty} empty slots in these 7 days · red = half your lineup or more is empty</div></div>
-    </section>
-    <section class="card flush"><div class="pad"><h2>Streamers: best pickups for the next 7 days</h2>
-      <div class="sub">Only drops that also win over the rest of the season.</div></div><div id="wk-streams"></div></section>`;
+    </section>`;
 
   $("#wk-days").innerHTML = w.days.map((d) => `
     ${d.new_week ? `<div class="newweek">WEEK ${d.week} <span>starts ${esc(d.label)}</span></div>` : ""}
@@ -292,19 +290,22 @@ function renderWeek(view) {
     { key: "pts", label: "Pts", num: true, html: (r) => num(r.pts) },
     { key: "change", label: "Change", num: false, cls: (r) => kindCls[r.kind] || "muted" },
   ], today ? w.today : day.lineup);
+}
 
-  table($("#wk-streams"), [
+/** Streamers: free agents who'd add the most points over the next 7 days (shown on Free Agents & Trades). */
+function renderStreamers(el, streamers) {
+  if (!streamers || !streamers.length) {
+    el.innerHTML = `<div class="empty small">No free agent is worth a move right now.</div>`;
+    return;
+  }
+  table(el, [
     { key: "name", label: "Add", num: false, html: (s) => playerCell(s.id, s.name, `${s.pos} · ${s.nba}`) +
       (s.waivers ? ` <span class="pill shaky">waivers ${esc(s.waivers)}</span>` : "") },
-    { key: "base", label: "Base", num: true, html: (s) => num(s.base) },
-    { key: "games", label: "Games", num: true },
-    { key: "light_games", label: "On light days", num: true },
-    { key: "gain", label: "Gain (7 days)", num: true, html: (s) => signed(s.gain, 0), cls: () => "good" },
-    { key: "later", label: "Rest of season", num: true, html: (s) => signed(s.later, 0),
-      cls: (s) => s.later >= 0 ? "good" : "bad" },
-    { key: "room", label: "Make room", num: false },
-  ], w.streamers, { sort: "gain" });
-  if (!w.streamers.length) $("#wk-streams").innerHTML = `<div class="empty">No free agent is worth a move right now.</div>`;
+    { key: "games", label: "Games", num: true, html: (s) => `${s.games} <span class="muted">(${s.light_games} light)</span>` },
+    { key: "gain", label: "7 days", num: true, html: (s) => signed(s.gain, 0), cls: () => "good" },
+    { key: "later", label: "Season", num: true, html: (s) => signed(s.later, 0), cls: (s) => s.later >= 0 ? "good" : "bad" },
+    { key: "room", label: "Make room", num: false, cls: () => "clip" },
+  ], streamers, { sort: "gain" });
 }
 
 function playerCell(id, name, sub = "") {

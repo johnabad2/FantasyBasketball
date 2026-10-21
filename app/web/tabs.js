@@ -37,6 +37,9 @@ function renderFreeAgents(view) {
         <div class="card flush"><div class="pad"><h2>Trade partners</h2>
           <div class="sub">Fair swaps that fix a position imbalance (2–3 per position). Click one to open it in Trade Lab.</div></div>
           <div id="fa-partners"></div></div>
+        <div class="card flush"><div class="pad"><h2>Streamers: best pickups for the next 7 days</h2>
+          <div class="sub">Only drops that also win over the rest of the season · light = games on days you have empty slots</div></div>
+          <div id="fa-streams"></div></div>
       </div>
     </section>`;
   table($("#fa-table"), [
@@ -75,6 +78,7 @@ function renderFreeAgents(view) {
   } else {
     $("#fa-partners").innerHTML = `<div class="empty small">No fair fixes found right now.</div>`;
   }
+  renderStreamers($("#fa-streams"), state.week && state.week.streamers);
 }
 
 // ------------------------------------------------------------------ Trade Lab
