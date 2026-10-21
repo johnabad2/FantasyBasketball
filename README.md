@@ -18,7 +18,7 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 
 ```
 Fantasy Hoops.bat   double-click to open the window
-Fantasy Hoops (new).bat   the new-look app (being built tab by tab)
+Fantasy Hoops (new).bat   double-click to open the new-look app
 app/                all the Python code (main.py = the window, webapp.py + web/ = the new-look app,
                     loader.py = loading from ESPN for both, fantasy.py = commands + alerts)
 config/             config.json (your ESPN cookies, never committed), nicknames.json, requirements
