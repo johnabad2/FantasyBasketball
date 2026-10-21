@@ -76,7 +76,10 @@ class ScheduleGrid(tk.Canvas):
     def draw(self):
         self.delete("all")
         w, h = self.winfo_width(), self.winfo_height()
-        if not self.data or w < 300 or h < 200:
+        if w < 300 or h < 200:
+            return
+        if not self.data:
+            self.create_text(w / 2, h / 2, text="No NBA schedule (demo mode).", fill=MUTED, font=(FONT, 11))
             return
         d = self.data
         # --- games per day strip

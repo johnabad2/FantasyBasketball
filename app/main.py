@@ -514,6 +514,7 @@ class App(tk.Tk):
         d = self.data
         league = d["league"]
         if not getattr(league, "pro_schedule", None):
+            self.schedule.show(None, {}, {}, {})
             return
         from espn_api.basketball.constant import PRO_TEAM_MAP
         team_of = projections.nba_team_id
@@ -855,7 +856,7 @@ class App(tk.Tk):
         scores = stats.season_scores(league)
         live, weekly = stats.live_points(league, scores), stats.weekly_standings(league, scores)
         day = getattr(league, "current_week", 1) or 1
-        today_pts = {tid: days.get(day, 0.0) for tid, (_, days) in scores.items()}  # live, games in progress
+        today_pts = {tid: days[day] for tid, (_, days) in scores.items() if day in days}  # live; none in the demo
         real = bool(getattr(league, "pro_schedule", None))
         injuries = news.injuries() if real else {}
         values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in me.roster}
