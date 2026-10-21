@@ -853,6 +853,8 @@ class App(tk.Tk):
         real = bool(getattr(league, "pro_schedule", None))  # the demo league has no ESPN feed or schedule
         chat_msgs = chat.league_chat(league) if real else []
         trades = feed.trades(league) if real else []
+        if real:
+            fantasy.waivers(league)  # before any planning: waiver players only count once they clear
         # Accepted trades count as done for everything forward-looking; today's lineup uses the real roster.
         after = feed.after_trades(league) if real else {t.team_id: t for t in league.teams}
         planned = after[me.team_id]
@@ -1026,10 +1028,13 @@ class App(tk.Tk):
             beats = fantasy.upgrade_over(fa, droppable, roster, t, ahead)
             upgrades += bool(beats)
             nxt = ahead(fa) if ahead else None
-            rows.append((p.name, p.position, p.proTeam, status_text(p), f"{fa.worth:.1f}",
+            claim = (getattr(league, "_fh_waivers", None) or {}).get(p.playerId)
+            rows.append((p.name, p.position, p.proTeam,
+                         (f"waivers {claim:%a}" if status_text(p) == "active" else f"{status_text(p)}, waivers")
+                         if claim else status_text(p), f"{fa.worth:.1f}",
                          f"{nxt[0]:.0f}" if nxt else "-",
                          beats.player.name if beats else "", f"+{fa.worth - beats.worth:.1f}" if beats else ""))
-            tags.append((status_tag(p) or ("hot" if beats else ""),))
+            tags.append((status_tag(p) or ("hot" if beats else "shaky" if claim else ""),))
         self.free_agents.set_rows(rows, tags)
         self.fa_head.set(f"Free agents  ·  {upgrades} would upgrade your roster")
 
@@ -1042,7 +1047,7 @@ class App(tk.Tk):
             if x["fixes_theirs"]:
                 fixes.append(trade.describe_fix(x["fixes_theirs"], "their"))
             rows.append((x["team"].team_name.strip(), x["give"].name, x["get"].name, ", ".join(fixes),
-                         f"{x['me']:+.1f}", f"{x['them']:+.1f}"))
+                         f"{round(x['me'], 1) + 0:+.1f}", f"{round(x['them'], 1) + 0:+.1f}"))
             tags.append(("hot",) if x["fixes_mine"] and x["fixes_theirs"] else ())
         self.partners.set_rows(rows or [("No fair fixes found right now.", "", "", "", "", "")], tags or None,
                                [str(i) for i in range(len(rows))] or None)
@@ -1354,7 +1359,9 @@ class App(tk.Tk):
                 room = f"IR: {s['ir'].name} if IR-eligible" + (f", else {drop}" if drop else "")
             else:
                 room = drop
-            rows.append((fa.player.name, fa.player.position, fa.player.proTeam, f"{fa.baseline:.1f}", s["games"],
+            claim = (getattr(league, "_fh_waivers", None) or {}).get(fa.player.playerId)
+            rows.append((fa.player.name + (f"  (waivers, clears {claim:%a})" if claim else ""), fa.player.position,
+                         fa.player.proTeam, f"{fa.baseline:.1f}", s["games"],
                          s["light_games"], f"+{s['gain']:.0f}", f"{s['later']:+,.0f}", room))
         self.wk_streams.set_rows(rows or [("No free agent is worth a move right now.", "", "", "", "", "",
                                            "", "", "")])

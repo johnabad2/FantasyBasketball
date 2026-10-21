@@ -268,7 +268,8 @@ def opportunity_alerts(league, mine, injuries, t, leaving=(), ahead=None, limit=
                             f"Opportunity: {p.name} ({p.proTeam}) - {o['reason']}",
                             f"{fmt(o['form'])} usually {o['form'].worth:.1f} a game; with about {o['extra_min']:.0f} "
                             f"more minutes, more like {o['boosted']:.1f}.\n      That beats {fmt(drop)} "
-                            f"({drop.worth:.1f}). Free agents like this get picked up fast."))
+                            f"({drop.worth:.1f}). Free agents like this get picked up fast"
+                            + (f": {get_text(league, p)}." if p.playerId in waivers(league) else ".")))
         if len(alerts) >= limit:
             break
     return alerts
@@ -301,7 +302,42 @@ def next_30_days(league, injuries):
     return ahead
 
 
-def waiver_alerts(mine, free_agents, t, leaving=(), ahead=None):
+def waivers(league):
+    """{player id: when his waiver period ends} for players on waivers: they must be claimed, and
+    only join your team once the claim processes. Also tells the planner not to count their games
+    before then. Cached on the league object; {} without ESPN (demo)."""
+    if getattr(league, "_fh_waivers", None) is None:
+        out = {}
+        if getattr(league, "pro_schedule", None):
+            from datetime import date, datetime
+            filters = {"players": {"filterStatus": {"value": ["WAIVERS"]}, "limit": 300,
+                                   "sortPercOwned": {"sortPriority": 1, "sortAsc": False}}}
+            try:
+                data = league.espn_request.league_get(
+                    params={"view": "kona_player_info", "scoringPeriodId": league.current_week},
+                    headers={"x-fantasy-filter": json.dumps(filters)})
+                for pe in data.get("players", []):
+                    if pe.get("status") == "WAIVERS" and pe.get("waiverProcessDate"):
+                        out[pe["id"]] = datetime.fromtimestamp(pe["waiverProcessDate"] / 1000)
+            except Exception:
+                pass
+            today = date.today()
+            league._fh_from = {pid: league.current_week + (when.date() - today).days for pid, when in out.items()}
+        league._fh_waivers = out
+    return league._fh_waivers
+
+
+def _cap(text):
+    return text[:1].upper() + text[1:]
+
+
+def get_text(league, player):
+    """'add Rollins' or 'claim Rollins off waivers (clears Thu 08:00)'."""
+    when = (getattr(league, "_fh_waivers", None) or {}).get(player.playerId)
+    return f"claim {player.name} off waivers (clears {when:%a %H:%M})" if when else f"add {player.name}"
+
+
+def waiver_alerts(mine, free_agents, t, leaving=(), ahead=None, league=None):
     """ahead(form) -> (points, games) over the next 30 days, or None (see planner.next_days)."""
     keep = load_keep() | set(leaving)  # never drop: kept, or in a trade that's going through
     droppable = sorted((f for f in mine if f.player.lineupSlot != "IR" and f.player.playerId not in keep),
@@ -321,7 +357,8 @@ def waiver_alerts(mine, free_agents, t, leaving=(), ahead=None):
                 detail += (f"\n      Next 30 days: ~{fa_pts:.0f} pts ({fa_g:.0f} games expected) vs "
                            f"~{d_pts:.0f} ({d_g:.0f}): {fa_pts - d_pts:+.0f}")
             alerts.append(Alert(f"fa:{fa.player.playerId}:{worst.player.playerId}", 1,
-                                f"Pick up {fa.player.name}, drop {worst.player.name}", detail))
+                                _cap(get_text(league, fa.player) if league else f"pick up {fa.player.name}")
+                                + f", drop {worst.player.name}", detail))
     return alerts
 
 
@@ -441,7 +478,9 @@ def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
     room = "open" if s["open_spot"] else (s["ir"] or s["drop"]).playerId
     return [Alert(f"stream:{s['fa'].player.playerId}:{room}", 2,
                   f"Stream {s['fa'].player.name}: +{s['gain']:.0f} pts over the next 7 days",
-                  f"Add {fmt(s['fa'])} and {how}. He plays {s['games']} games this week, "
+                  f"{_cap(get_text(league, s['fa'].player))}"
+                  f" ({s['fa'].player.position}, {s['fa'].player.proTeam}) and {how}. "
+                  f"He plays {s['games']} games this week{' after clearing waivers' if s['fa'].player.playerId in waivers(league) else ''}, "
                   f"{s['light_games']} of them on days you have empty lineup slots.")]
 
 
@@ -469,7 +508,9 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
     import feed
     leaving = feed.leaving(league, my_team.team_id) if real else set()
     ahead = next_30_days(league, injuries) if real else None
-    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds, leaving, ahead) + \
+    if real:
+        waivers(league)  # waiver players: claim wording, and no games counted before they clear
+    alerts = injury_alerts(mine, injuries) + waiver_alerts(mine, fas, thresholds, leaving, ahead, league) + \
         balance_alerts(my_team)
     if real:
         alerts += opportunity_alerts(league, mine, injuries, thresholds, leaving) + minutes_alerts(mine, league.year)

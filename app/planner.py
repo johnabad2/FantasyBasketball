@@ -90,6 +90,9 @@ def best_lineup(cands, slots):
 
 
 def _game(league, player, day):
+    start = (getattr(league, "_fh_from", None) or {}).get(player.playerId)
+    if start and day < start:
+        return None  # on waivers: he can't play for you before the claim goes through
     games = (getattr(league, "pro_schedule", None) or {}).get(nba_team_id(player), {}).get(str(day), [])
     return games[0] if games else None
 

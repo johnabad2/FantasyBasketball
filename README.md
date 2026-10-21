@@ -58,6 +58,11 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`
   10% in value) that fix a position imbalance for you, for them or both, without either starting
   lineup getting worse. Double-click one to open it in Trade Lab
 
+**Waivers.** Recently dropped players sit on waivers until a set time (claims, not instant adds).
+The app reads that time from ESPN: such players show as e.g. "waivers Thu" (amber) on Free Agents
+and in streamers, alerts say "claim X off waivers (clears Thu 08:00)", and none of their games before
+they clear count in the 7-day, 30-day or streamer numbers.
+
 **Pending trades.** If your league has a trade review period (set in ESPN's league settings; 0 hours =
 instant), an accepted trade waits that long before going through. Meanwhile the app
 already counts it as done for everything forward-looking (Week Ahead from the day after it
