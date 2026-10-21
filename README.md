@@ -33,10 +33,11 @@ its config and data from its own location.
 
 The app is moving to a modern web-style design that opens in its own window. Double-click
 **`Fantasy Hoops (new).bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use
-your web browser instead, `--demo` for the made-up league). **Standings** and **My Team** are done:
+your web browser instead, `--demo` for the made-up league). **Standings**, **My Team**, **Week Ahead** and
+**Schedule** are done:
 sortable tables (click a header), player photos, live points, a rank-by-week chart you can hover, and
-a star to keep players. The other tabs are still in the original window below, which keeps working
-until everything has moved over.
+a star to keep players. The other tabs still live in the original window below (each one has an
+**Open the original window** button), which keeps working until everything has moved over.
 
 Under the hood a small local server (`app\webapp.py`, only reachable from this PC) loads the league
 with the same code as the original window (`app\loader.py`) and hands the page its data as JSON;

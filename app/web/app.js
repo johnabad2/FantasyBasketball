@@ -6,7 +6,7 @@ const TABS = [
   ["free-agents", "Free Agents & Trades"], ["trade-lab", "Trade Lab"], ["league", "League"], ["player", "Player"],
   ["compare", "Compare"], ["news", "News"], ["activity", "Activity"],
 ];
-const READY = new Set(["standings", "my-team"]);  // tabs moved over from the desktop app so far
+const READY = new Set(["standings", "my-team", "week", "schedule"]);  // tabs moved over from the desktop app so far
 const ME = "#f26b1d", OTHER = "#4b5563", MUTED = "#8ea0b8", GRID = "#1c2636";
 
 let state = null;
@@ -71,13 +71,16 @@ function render() {
     view.innerHTML = `<div class="card empty">${state.error ? esc(state.error) : "Loading your league from ESPN…"}</div>`;
     return;
   }
-  ({ "standings": renderStandings, "my-team": renderMyTeam }[tab] || renderSoon)(view, tab);
+  ({ "standings": renderStandings, "my-team": renderMyTeam, "week": renderWeek, "schedule": renderSchedule }[tab]
+    || renderSoon)(view, tab);
 }
 
 function renderSoon(view, tab) {
   const name = TABS.find(([id]) => id === tab)[1];
-  view.innerHTML = `<div class="card empty"><h2>${esc(name)}</h2>This tab is still in the desktop app
-    (<code>app\\main.py</code>). It's next in line to move over.</div>`;
+  view.innerHTML = `<div class="card empty"><h2>${esc(name)}</h2>
+    <p>This tab hasn't moved to the new look yet. It still works in the original window.</p>
+    <button class="btn primary" id="classic">Open the original window</button></div>`;
+  $("#classic").onclick = (e) => { e.target.disabled = true; e.target.textContent = "Opening…"; post("/api/classic"); };
 }
 
 // ------------------------------------------------------------------ tables
@@ -229,6 +232,116 @@ function renderMyTeam(view) {
     if (!b) return;
     b.disabled = true;
     post("/api/keep", { id: Number(b.dataset.id), keep: b.dataset.keep === "true" });
+  });
+}
+
+// ------------------------------------------------------------------ Week Ahead
+
+let weekDay = 0;  // 0 = today's lineup; otherwise an index into the next 7 days
+
+function renderWeek(view) {
+  const w = state.week;
+  if (w.demo) { view.innerHTML = `<div class="card empty">No NBA schedule in the demo league.</div>`; return; }
+  view.innerHTML = `
+    <section class="split">
+      <div class="card flush"><div class="pad"><h2 id="wk-title"></h2><div class="sub" id="wk-sub"></div></div>
+        <div id="wk-lineup"></div></div>
+      <div class="card"><h2>Next 7 days</h2><div class="sub">click a day to see its lineup</div>
+        <div class="days" id="wk-days"></div>
+        <div class="note">${w.empty} empty slots in these 7 days · red = half your lineup or more is empty</div></div>
+    </section>
+    <section class="card flush"><div class="pad"><h2>Streamers: best pickups for the next 7 days</h2>
+      <div class="sub">Only drops that also win over the rest of the season.</div></div><div id="wk-streams"></div></section>`;
+
+  $("#wk-days").innerHTML = w.days.map((d) => `
+    ${d.new_week ? `<div class="newweek">WEEK ${d.week} <span>starts ${esc(d.label)}</span></div>` : ""}
+    <button class="day ${d.index === weekDay ? "on" : ""} ${d.filled <= d.slots / 2 ? "light" : ""}" data-i="${d.index}">
+      <span class="dl">${d.index === 0 ? "Today" : esc(d.label.slice(0, 3))}<small>${esc(d.label.slice(4))}</small></span>
+      <span class="fill"><i style="width:${100 * d.filled / d.slots}%"></i></span>
+      <span class="fn">${d.filled}/${d.slots}</span><span class="fp">${d.points} pts</span>
+      <span class="fw">${esc(d.who.join(", "))}${d.spare.length ? ` <em>(no slot: ${esc(d.spare.join(", "))})</em>` : ""}</span>
+    </button>`).join("");
+  $("#wk-days").onclick = (e) => {
+    const b = e.target.closest(".day");
+    if (!b) return;
+    weekDay = Number(b.dataset.i);
+    view.dataset.key = "";  // force a redraw of this tab
+    render();
+  };
+
+  const today = weekDay === 0;
+  const day = w.days[weekDay];
+  if (today && w.summary) {
+    const gain = w.summary.best - w.summary.current;
+    $("#wk-title").textContent = `Today: your lineup scores ${num(w.summary.current)} pts`;
+    $("#wk-sub").innerHTML = gain >= 0.5
+      ? `<span class="good">Best possible ${num(w.summary.best)} (+${num(gain)}): make the changes below on ESPN.</span>`
+      : "Already your best lineup for the rest of today.";
+  } else if (day) {
+    $("#wk-title").textContent = `${day.long}: ${day.filled}/${day.slots} slots filled, about ${day.points} pts`;
+    $("#wk-sub").textContent = "Best lineup for that day. Click Today to go back.";
+  }
+  const kindCls = { start: "good", move: "", bench: "warn", empty: "bad" };
+  table($("#wk-lineup"), [
+    { key: "slot", label: "Slot", num: false, html: (r) => `<span class="pill">${esc(r.slot)}</span>` },
+    { key: "player", label: "Player", num: false, html: (r) => r.player ? playerCell(r.id, r.player) : `<span class="muted">—</span>` },
+    { key: "game", label: "Game", num: false },
+    { key: "matchup_pct", label: "Matchup", num: true, html: (r) => esc(r.matchup || ""),
+      cls: (r) => r.matchup_pct >= 2 ? "good" : r.matchup_pct <= -2 ? "bad" : "" },
+    { key: "pts", label: "Pts", num: true, html: (r) => num(r.pts) },
+    { key: "change", label: "Change", num: false, cls: (r) => kindCls[r.kind] || "muted" },
+  ], today ? w.today : day.lineup);
+
+  table($("#wk-streams"), [
+    { key: "name", label: "Add", num: false, html: (s) => playerCell(s.id, s.name, `${s.pos} · ${s.nba}`) +
+      (s.waivers ? ` <span class="pill shaky">waivers ${esc(s.waivers)}</span>` : "") },
+    { key: "base", label: "Base", num: true, html: (s) => num(s.base) },
+    { key: "games", label: "Games", num: true },
+    { key: "light_games", label: "On light days", num: true },
+    { key: "gain", label: "Gain (7 days)", num: true, html: (s) => signed(s.gain, 0), cls: () => "good" },
+    { key: "later", label: "Rest of season", num: true, html: (s) => signed(s.later, 0),
+      cls: (s) => s.later >= 0 ? "good" : "bad" },
+    { key: "room", label: "Make room", num: false },
+  ], w.streamers, { sort: "gain" });
+  if (!w.streamers.length) $("#wk-streams").innerHTML = `<div class="empty">No free agent is worth a move right now.</div>`;
+}
+
+function playerCell(id, name, sub = "") {
+  return `<div class="who"><div class="face sm" style="background-image:url(/photo/${id})"></div>
+    <div>${esc(name)}${sub ? `<div class="sub">${esc(sub)}</div>` : ""}</div></div>`;
+}
+
+// ------------------------------------------------------------------ Schedule
+
+function renderSchedule(view) {
+  const s = state.schedule;
+  if (s.demo) { view.innerHTML = `<div class="card empty">No NBA schedule in the demo league.</div>`; return; }
+  view.innerHTML = `
+    <section class="card"><h2>NBA games per day</h2>
+      <div class="sub">amber = light day: fewer of your players play, so streamers have open slots to fill</div>
+      <div class="chart short" id="per-day"></div></section>
+    <section class="card flush"><div class="pad"><h2>Games per team per week</h2>
+      <div class="sub">brighter = more games · sorted by the next two weeks · hover a cell for the dates</div></div>
+      <div class="scroll"><table class="grid"><thead><tr><th>Team</th>${s.weeks.map((w) =>
+        `<th class="c" title="${esc(w.range)}">${esc(w.label)}</th>`).join("")}<th>Your players</th><th>Best free agents</th></tr></thead>
+      <tbody>${s.teams.map((t) => `<tr><td class="team">${esc(t.team)}</td>${t.weeks.map((g) =>
+        `<td class="c heat h${Math.min(g.length, 4)}" title="${esc(g.map((x) => `${x.date}  ${x.home ? "vs" : "@"} ${x.opp}`).join("\n"))}">${g.length}</td>`).join("")}
+        <td class="mine">${esc(t.mine.join(", "))}</td><td class="muted">${esc(t.fas.join(", "))}</td></tr>`).join("")}
+      </tbody></table></div></section>`;
+
+  const chart = echarts.init($("#per-day"));
+  charts.push(chart);
+  const most = Math.max(...s.days.map((d) => d.games), 1);
+  chart.setOption({
+    grid: { left: 10, right: 10, top: 24, bottom: 34 },
+    tooltip: { trigger: "axis", backgroundColor: "#1a2230", borderColor: "#2c3747", textStyle: { color: "#e8edf4" },
+               formatter: (p) => `${s.days[p[0].dataIndex].label} ${s.days[p[0].dataIndex].date}: ${p[0].value} games` },
+    xAxis: { type: "category", data: s.days.map((d) => `${d.label}\n${d.date}`), axisLabel: { color: MUTED },
+             axisLine: { lineStyle: { color: "#243044" } }, axisTick: { show: false } },
+    yAxis: { type: "value", show: false, max: most * 1.2 },
+    series: [{ type: "bar", barWidth: "62%", data: s.days.map((d) => ({ value: d.games,
+      itemStyle: { color: d.games <= 5 ? "#fbbf24" : "#3b82f6", borderRadius: [6, 6, 0, 0] } })),
+      label: { show: true, position: "top", color: "#c4cdd9", fontWeight: "bold" } }],
   });
 }
 

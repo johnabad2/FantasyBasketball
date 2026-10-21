@@ -31,7 +31,7 @@ class State:
 
     def __init__(self, demo):
         self.demo, self.data, self.updated, self.error = demo, None, None, None
-        self.loading, self.roles = False, {}
+        self.loading, self.roles, self.pages = False, {}, {}
         self._lock = threading.Lock()
 
     def refresh(self):
@@ -40,7 +40,11 @@ class State:
                 return
             self.loading = True
         try:
-            self.data, self.updated, self.error = loader.load(self.demo), datetime.now(), None
+            data = loader.load(self.demo)
+            # pages that don't change until the next refresh are built once here, not on every poll
+            self.pages = {"header": views.header(data), "standings": views.standings(data),
+                          "week": views.week_ahead(data), "schedule": views.schedule_view(data)}
+            self.data, self.updated, self.error = data, datetime.now(), None
         except SystemExit as e:  # fantasy/stats explain user-facing problems this way
             self.error = str(e)
         except Exception as e:
@@ -69,7 +73,7 @@ class State:
                "refresh_min": REFRESH_MIN}
         d = self.data
         if d:
-            out.update(header=views.header(d), standings=views.standings(d), my_team=views.my_team(d, self.roles))
+            out.update(self.pages, my_team=views.my_team(d, self.roles))
         return out
 
 
@@ -110,6 +114,14 @@ def handler_for(state):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             if self.path == "/api/refresh":
                 state.refresh_soon()
+                return self._send(_json({"ok": True}))
+            if self.path == "/api/classic":  # open the original window for tabs not moved over yet
+                import subprocess
+                import sys
+                exe = Path(sys.executable)
+                pythonw = exe.with_name("pythonw.exe")
+                subprocess.Popen([str(pythonw if pythonw.exists() else exe), str(Path(__file__).with_name("main.py"))]
+                                 + (["--demo"] if state.demo else []))
                 return self._send(_json({"ok": True}))
             if self.path == "/api/keep" and state.data:
                 player = next((p for p in state.data["me"].roster if p.playerId == body.get("id")), None)
