@@ -214,6 +214,15 @@ Pickup, streamer and trade suggestions never create a balance problem you don't 
 (e.g. a 4th PG, or leaving you with 1 C). They also never touch players in a trade that's
 waiting to go through, since dropping one would break the deal.
 
+## How accurate are the projections?
+
+Every day (when the app loads, or the scheduled check runs) it saves what it projects for every
+rostered player, the best free agents and every team in `dataccuracy.db`. After a week or more,
+`.venv\Scripts\python appantasy.py accuracy` shows how far off it was: players' projected points per
+game vs what they then averaged (next to two simple guesses, their season average and ESPN's
+projection, so you can see whether the app beats them), and teams' projected 7-day points vs what
+they scored. Use it to tune the model rather than guessing.
+
 ## Automatic checks
 
 `scripts\check.ps1` runs `export` and `alerts --notify` and logs to `data\check.log`. You only get a notification for

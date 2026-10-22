@@ -55,7 +55,7 @@ def load(demo=False):
         week = [b if a["date"] > switch else a for a, b in zip(week, later)]
     plan = dict(week=week, moves=planner.today_moves(league, me, injuries),
                 streamers=planner.streamers(league, planned, fas, injuries))
-    return dict(league=league, cfg=cfg, rules=rules, me=me, planned=planned, pending=pending, demo=demo,
+    out = dict(league=league, cfg=cfg, rules=rules, me=me, planned=planned, pending=pending, demo=demo,
                 today_pts=today_pts, projected=projected, live=live, weekly=weekly,
                 injuries=injuries, plan=plan,
                 opportunities=opportunity.opportunities(league, injuries) if real else [],
@@ -64,6 +64,12 @@ def load(demo=False):
                 mine=mine, fas=fas, trades=fantasy.trade_ideas(mine, others, cfg["thresholds"], per_team=3,
                                                           leaving=feed.leaving(league, me.team_id) if real else ()),
                 activity=activity, chat=chat_msgs, trade_feed=trades)
+    try:  # save today's projections once a day, to check their accuracy later (fantasy.py accuracy)
+        import accuracy
+        accuracy.log(out)
+    except Exception:
+        pass  # never let bookkeeping stop the app loading
+    return out
 
 
 def points(d, team):

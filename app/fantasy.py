@@ -695,7 +695,18 @@ def cmd_alerts(league, cfg, do_notify, save_snapshot):
     me = my_team(league, cfg)
     after = feed.after_trades(league)
     plan = after.get(me.team_id, me)
-    alerts = build_alerts(league, plan, cfg["thresholds"], analyze(league, plan, teams=list(after.values())))
+    analysis = analyze(league, plan, teams=list(after.values()))
+    alerts = build_alerts(league, plan, cfg["thresholds"], analysis)
+    if save_snapshot:  # the scheduled check also saves today's projections, to measure their accuracy later
+        try:
+            import accuracy
+            import news
+            import projections
+            live = stats.live_points(league)
+            accuracy.log({"league": league, "fas": analysis[2], "live": live, "injuries": news.injuries(),
+                          "projected": projections.projected_final(league, live, list(after.values()))})
+        except Exception as e:  # never let bookkeeping break the alerts
+            print(f"(couldn't save today's projections: {e})")
     if not alerts:
         print("Nothing to do right now.")
     labels = {1: "DO NOW", 2: "CONSIDER", 3: "FYI"}
@@ -739,6 +750,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("teams")
     sub.add_parser("standings")
+    sub.add_parser("accuracy", help="how close the app's projections have been to what actually happened")
     r = sub.add_parser("roster")
     r.add_argument("team", nargs="?", help="team id or part of its name (default: yours)")
     a = sub.add_parser("alerts")
@@ -770,6 +782,9 @@ def main():
 
     if args.cmd == "teams":
         cmd_teams(league, cfg)
+    elif args.cmd == "accuracy":
+        import accuracy
+        print(accuracy.report())
     elif args.cmd == "standings":
         cmd_standings(league, cfg)
     elif args.cmd == "roster":
