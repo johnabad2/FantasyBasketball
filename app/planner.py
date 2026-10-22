@@ -98,9 +98,9 @@ def _game(league, player, day):
 
 
 def _matchup(league, player, game):
-    """How much better (or worse) than usual this game is for him: the opponent's pace and defence."""
-    tid = nba_team_id(player)
-    return matchups.factor(matchups.for_league(league), matchups.opponent(game, tid)) if game else 1.0
+    """How much better (or worse) than usual this game is for him: the opponent's pace and defence,
+    back-to-backs, blowout risk and end-of-season rest (matchups.game_factor)."""
+    return matchups.game_factor(league, game, nba_team_id(player)) if game else 1.0
 
 
 def _available(player, game, injuries):

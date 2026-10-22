@@ -67,7 +67,8 @@ def projected_final(league, so_far=None, teams=None, injuries=None):
 def rest_of_season(league, players, slots, injuries=None):
     """Fantasy points `players` would score from now to the end of the season: each remaining day,
     the best `slots` of them whose NBA team plays, each scaled by how many of his games ESPN expects
-    him to play and by the matchup. Injured players (out, or on IR) count from their expected return
+    him to play and by the game (opponent, back-to-back, blowout risk, end-of-season rest).
+    Injured players (out, or on IR) count from their expected return
     date - two weeks from now if there's none. Bench players count on days a starter has no game,
     which is why depth matters in a daily-lineup league."""
     from datetime import date
@@ -85,7 +86,6 @@ def rest_of_season(league, players, slots, injuries=None):
         # expected value per scheduled game = base x the share of games he's expected to play
         roster.append((form_of(p, league.year).baseline * availability(p, league.year), nba_team_id(p), first))
     import matchups
-    table = matchups.for_league(league)
     total = 0.0
     for day in range(today, final + 1):
         key = str(day)
@@ -95,7 +95,7 @@ def rest_of_season(league, players, slots, injuries=None):
                 continue
             for game in schedule.get(tid, {}).get(key, []):
                 if day > today or game["date"] > now_ms:  # today: only games not started yet
-                    playing.append(value * matchups.factor(table, matchups.opponent(game, tid)))
+                    playing.append(value * matchups.game_factor(league, game, tid))
                     break
         total += sum(sorted(playing, reverse=True)[:slots])
     return total

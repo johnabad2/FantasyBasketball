@@ -233,9 +233,22 @@ It uses the methods fantasy analysts use for trade values and pickups:
   below that aren't suggested. Trades the other manager would likely accept that gain you 40+ are
   highlighted in Trade Lab.
 
+Each game is also adjusted for things that change how much a player scores that night:
+
+| Factor | Effect | Why |
+|---|---|---|
+| Opponent | Up to ±10% for pace and defence | More possessions mean more of every stat; weak defences give up more points |
+| Back-to-back, second night | −3% | Teams shoot worse and play slower on no rest, and that's when stars and veterans get rested |
+| Blowout risk | −1% for each point the expected margin is past 8, at most −6% | Starters sit 4th quarters in lopsided games. The margin comes from each team's scoring margin, with last season's counted at 60% because teams regress |
+| Last 2 weeks of the season | −5%, or −15% for teams winning under 40% | Teams rest players late, and losing teams shut them down |
+
+These matter most in a total-points league like this one, where every game counts.
+
 Sources: CBS Sports and FantasyPros trade value charts; Yahoo's articles on 2-for-1 trades and roster
 spots; FanGraphs on stat stabilization (how many games a stat needs before it means something);
-FFToday on trading strategy.
+FFToday on trading strategy; Aicardi & Zitzewitz's back-to-back study (20,000+ games, via Economist
+Writing Every Day); RotoWire and FantasyLabs on blowouts and spreads; the NBA's player participation
+policy (rest rules for stars and veterans); CBS Sports on end-of-season tanking.
 
 ## How accurate are the projections?
 
