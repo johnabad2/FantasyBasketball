@@ -4,7 +4,7 @@ from datetime import datetime
 
 import fantasy
 import projections
-from loader import points, status_tag, status_text
+from loader import points, positions, status_tag, status_text
 from stats import owner_names, split_of
 
 
@@ -27,7 +27,8 @@ def free_agents_trades(d):
         beats = fantasy.upgrade_over(fa, droppable, roster, t, ahead)  # same rule as the pickup alert
         nxt = ahead(fa) if ahead else None
         claim = waivers.get(p.playerId)
-        fas.append({"id": p.playerId, "name": p.name, "pos": p.position, "nba": p.proTeam, "status": status_text(p),
+        fas.append({"id": p.playerId, "name": p.name, "pos": p.position, "elig": positions(p), "nba": p.proTeam,
+                    "status": status_text(p),
                     "status_tag": status_tag(p), "waivers": claim.strftime("%a") if claim else None,
                     "worth": round(fa.worth, 1), "next30": round(nxt[0]) if nxt else None,
                     "drop": beats.player.name if beats else None,
@@ -72,7 +73,8 @@ def league_roster(d, team_id=None, split=None):
         else:
             s, proj = stats.season_or_projection(p, year)
         vp = projections.vs_projection(p, year, rules)
-        rows.append({"id": p.playerId, "name": p.name, "projected": proj, "pos": p.position, "nba": p.proTeam,
+        rows.append({"id": p.playerId, "name": p.name, "projected": proj, "pos": p.position, "elig": positions(p),
+                     "nba": p.proTeam,
                      "slot": p.lineupSlot, "status": status_text(p), "status_tag": status_tag(p),
                      "gp": games(s if split else season), "fp_total": round(season.get("applied_total", 0)),
                      "fpg": round(fp_per_game(s, rules), 1),
@@ -227,6 +229,7 @@ def trade_rosters(d):
         forms = sorted((fantasy.form_of(p, year) for p in t.roster), key=lambda f: -f.worth)
         out.append({"id": t.team_id, "name": t.team_name.strip(), "me": t.team_id == d["me"].team_id,
                     "players": [{"id": f.player.playerId, "name": f.player.name, "pos": f.player.position,
+                                 "elig": positions(f.player),
                                  "nba": f.player.proTeam, "status": status_text(f.player),
                                  "status_tag": status_tag(f.player), "base": round(f.baseline, 1),
                                  "l15": round(f.recent, 1)} for f in forms]})

@@ -43,14 +43,15 @@ function renderFreeAgents(view) {
       </div>
     </section>`;
   table($("#fa-table"), [
-    { key: "name", label: "Player", num: false, html: (p) => facedLink(p.id, p.name, `${p.pos} · ${p.nba}`) },
+    { key: "name", label: "Player", num: false, html: (p) => facedLink(p.id, p.name, p.nba) },
+    posCol,
     { key: "status", label: "Status", num: false, html: (p) => p.waivers ? statusPill(`waivers ${p.waivers}`, "shaky")
       : statusPill(p.status, p.status_tag) },
     { key: "worth", label: "Worth", num: true, html: (p) => num(p.worth) },
     { key: "next30", label: "Next 30d", num: true, html: (p) => num(p.next30, 0) },
     { key: "drop", label: "Drop for him", num: false, html: (p) => p.drop ? esc(p.drop) : "" },
     { key: "gain", label: "Gain", num: true, html: (p) => p.gain ? signed(p.gain) : "", cls: () => "good" },
-  ], f.free_agents, { rowClass: (p) => p.drop ? "up" : "" });
+  ], f.free_agents, { rowClass: (p) => p.drop ? "up" : "", positions: true });
 
   if (f.ideas.length) {
     table($("#fa-ideas"), [
@@ -127,17 +128,20 @@ function drawLabLists() {
   [["#lab-a-list", A, "send"], ["#lab-b-list", B, "get"]].forEach(([sel, team, key]) => {
     table($(sel), [
       { key: "tick", label: "", num: false, html: (p) => lab[key].includes(p.id) ? "✔" : "" },
-      { key: "name", label: "Player", num: false, html: (p) => `${esc(p.name)} <span class="muted">${esc(p.pos)} · ${esc(p.nba)}</span>` },
+      { key: "name", label: "Player", num: false, html: (p) => `${esc(p.name)} <span class="muted">${esc(p.nba)}</span>` },
+      posCol,
       { key: "status", label: "Status", num: false, html: (p) => statusPill(p.status, p.status_tag) },
       { key: "base", label: "Base", num: true, html: (p) => num(p.base) },
       { key: "l15", label: "L15", num: true, html: (p) => num(p.l15) },
-    ], team.players, { rowClass: (p) => "clickable " + (lab[key].includes(p.id) ? "me" : "") });
-    $(sel).querySelectorAll("tbody tr").forEach((tr) => tr.onclick = () => {
-      const p = team.players[tr.dataset.i];
+    ], team.players, { rowClass: (p) => "clickable " + (lab[key].includes(p.id) ? "me" : ""), positions: true });
+    $(sel).onclick = (e) => {  // on the list itself, so it still works after a position filter redraws the rows
+      const tr = e.target.closest("tbody tr");
+      const p = tr && team.players[tr.dataset.i];
+      if (!p) return;
       lab[key] = lab[key].includes(p.id) ? lab[key].filter((x) => x !== p.id) : [...lab[key], p.id];
       drawLabLists();
       runTrade();
-    });
+    };
   });
 }
 
@@ -231,7 +235,8 @@ async function renderLeague(view) {
   $("#lg-split").onchange = () => { leagueSplit = $("#lg-split").value; renderLeague(view); };
   $("#lg-info").textContent = `${r.owner} · ${num(r.points)} pts · #${r.rank}`;
   table($("#lg-table"), [
-    { key: "name", label: "Player", num: false, html: (p) => facedLink(p.id, p.name, `${p.pos} · ${p.nba} · ${p.slot}${p.projected ? " · *" : ""}`) },
+    { key: "name", label: "Player", num: false, html: (p) => facedLink(p.id, p.name, `${p.nba} · ${p.slot}${p.projected ? " · *" : ""}`) },
+    posCol,
     { key: "status", label: "Status", num: false, html: (p) => statusPill(p.status, p.status_tag) },
     { key: "gp", label: "GP", num: true },
     { key: "fp_total", label: "FP tot", num: true, html: (p) => num(p.fp_total, 0) },
@@ -239,7 +244,8 @@ async function renderLeague(view) {
     { key: "proj", label: "Proj/G", num: true, html: (p) => num(p.proj) },
     { key: "vs_proj", label: "Vs proj", num: true, html: (p) => signed(p.vs_proj), cls: (p) => p.vs_proj > 0 ? "good" : p.vs_proj < 0 ? "bad" : "" },
     ...r.box_cols.map((c, i) => ({ key: "b" + i, label: c, num: true, html: (p) => esc(p.box[i]) })),
-  ], r.rows.map((p) => ({ ...p, ...Object.fromEntries(p.box.map((v, i) => ["b" + i, parseFloat(v) || 0])) })));
+  ], r.rows.map((p) => ({ ...p, ...Object.fromEntries(p.box.map((v, i) => ["b" + i, parseFloat(v) || 0])) })),
+  { positions: true });
 }
 
 // ------------------------------------------------------------------ Player

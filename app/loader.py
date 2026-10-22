@@ -122,6 +122,11 @@ def minutes_text(p, year):
     return f"{usual:.0f}" + (f" ({trend:+.0f})" if trend is not None and abs(trend) >= 2 else "")
 
 
+def positions(p):
+    """The positions he can be played at: ['PG', 'SG'] etc."""
+    return [s for s in (p.eligibleSlots or []) if s in ("PG", "SG", "SF", "PF", "C")]
+
+
 def status_tag(p):
     s = p.injuryStatus or "ACTIVE"
     return "out" if s in fantasy.OUT_STATUSES else "shaky" if s in fantasy.SHAKY_STATUSES else ""

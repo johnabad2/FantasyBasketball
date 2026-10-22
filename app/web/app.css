@@ -197,3 +197,6 @@ tr.plus td { background: rgba(74, 222, 128, .07); }
 tr.plus td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 .plus-key { color: var(--green); font-weight: 600; }
 #lab-sugg td, #lab-sugg th { padding-left: 6px; padding-right: 6px; }
+
+.posbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px 2px; flex-wrap: wrap; }
+.posbar .chip { padding: 2px 9px; }

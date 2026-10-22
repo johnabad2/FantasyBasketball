@@ -3,7 +3,7 @@ Formatting decisions (what's 'hot', what's out) are made here so the page only l
 import fantasy
 import lineup
 import projections
-from loader import minutes_text, points, status_tag, status_text
+from loader import minutes_text, points, positions, status_tag, status_text
 from stats import owner_names, split_of
 
 PRIORITY = {1: "do-now", 2: "consider", 3: "fyi"}
@@ -65,7 +65,8 @@ def my_team(d, roles=None):
         form = ("hot" if trusted and f.trend >= t["trend_pct"] else
                 "cold" if trusted and f.trend <= -t["trend_pct"] else "")
         roster.append({
-            "id": p.playerId, "name": p.name, "kept": p.playerId in kept, "pos": p.position, "nba": p.proTeam,
+            "id": p.playerId, "name": p.name, "kept": p.playerId in kept, "pos": p.position, "elig": positions(p),
+            "nba": p.proTeam,
             "lineup": "IR" if slot == "IR" else "bench" if slot == "BE" else slot,
             "starting": slot not in ("BE", "IR"),
             "game": lineup.game_today(league, p, games) or "", "proj_today": round(today_pts[p.playerId], 1) or None,
@@ -167,6 +168,7 @@ def week_ahead(d):
                 f"IR: {s['ir'].name} if IR-eligible" + (f", else {drop}" if drop else "") if s["ir"] else drop)
         claim = waivers.get(fa.player.playerId)
         streamers.append({"id": fa.player.playerId, "name": fa.player.name, "pos": fa.player.position,
+                          "elig": positions(fa.player),
                           "nba": fa.player.proTeam, "base": round(fa.baseline, 1), "games": s["games"],
                           "light_games": s["light_games"], "gain": round(s["gain"]), "later": round(s["later"]),
                           "room": room, "waivers": claim.strftime("%a %H:%M") if claim else None})

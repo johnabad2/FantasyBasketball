@@ -87,19 +87,35 @@ function renderSoon(view, tab) {
 // ------------------------------------------------------------------ tables
 
 /** A sortable table. cols: [{key, label, num?, html?(row) , cls?}]; rowClass(row) adds a class per row. */
-function table(el, cols, rows, { sort = null, desc = true, rowClass = () => "" } = {}) {
+const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
+const posFilters = {};  // remembered per table (by element id) while the app is open
+
+/** The Pos column for player tables: sorts in basketball order (PG, SG, SF, PF, C), not A-Z. */
+const posCol = { key: "pos", label: "Pos", num: false, sortValue: (r) => POSITIONS.indexOf(r.pos),
+                 html: (r) => esc(r.pos) + (r.elig && r.elig.length > 1 ? `<span class="muted">/${esc(r.elig.filter((x) => x !== r.pos).join("/"))}</span>` : "") };
+
+/** A sortable table. cols: [{key, label, num?, html?(row), cls?(row), sortValue?(row)}].
+ *  positions: show All/PG/SG/SF/PF/C buttons that keep players who can play that position. */
+function table(el, cols, rows, { sort = null, desc = true, rowClass = () => "", positions = false } = {}) {
   let by = sort, down = desc;
+  const all = rows;
+  const value = (r, k) => { const c = cols.find((x) => x.key === k); return c && c.sortValue ? c.sortValue(r) : r[k]; };
   const draw = () => {
+    const pick = positions ? (posFilters[el.id] || "All") : "All";
+    rows = pick === "All" ? all : all.filter((r) => (r.elig && r.elig.length ? r.elig : [r.pos]).includes(pick));
     const sorted = by ? [...rows].sort((a, b) => {
-      const x = a[by], y = b[by];
+      const x = value(a, by), y = value(b, by);
       if (x === y) return 0;
       if (x === null || x === undefined || x === "") return 1;
       if (y === null || y === undefined || y === "") return -1;
       return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * (down ? -1 : 1);
     }) : rows;
-    el.innerHTML = `<div class="scroll"><table><thead><tr>${cols.map((c) =>
+    el.innerHTML = (positions ? `<div class="posbar">${["All", ...POSITIONS].map((p) =>
+      `<button class="chip ${p === pick ? "on" : ""}" data-pos="${p}">${p}</button>`).join("")}
+      <span class="sub">${pick === "All" ? "" : `players who can play ${pick}`}</span></div>` : "") +
+      `<div class="scroll"><table><thead><tr>${cols.map((c) =>
       `<th data-k="${c.key}" class="${c.num ? "n" : ""} ${by === c.key ? "sorted" + (down ? "" : " asc") : ""}">${esc(c.label)}</th>`).join("")}
-      </tr></thead><tbody>${sorted.map((r) => `<tr class="${rowClass(r)}" data-i="${rows.indexOf(r)}">${cols.map((c) =>
+      </tr></thead><tbody>${sorted.map((r) => `<tr class="${rowClass(r)}" data-i="${all.indexOf(r)}">${cols.map((c) =>
       `<td class="${c.num ? "n" : ""} ${c.cls ? c.cls(r) : ""}">${c.html ? c.html(r) : esc(r[c.key] ?? "-")}</td>`).join("")}</tr>`).join("")}
       </tbody></table></div>`;
     el.querySelectorAll("th").forEach((th) => th.onclick = () => {
@@ -107,6 +123,10 @@ function table(el, cols, rows, { sort = null, desc = true, rowClass = () => "" }
       if (by === k) down = !down; else { by = k; down = cols.find((c) => c.key === k).num !== false; }
       draw();
     });
+    el.querySelectorAll(".posbar .chip").forEach((b) => b.onclick = () => { posFilters[el.id] = b.dataset.pos; draw(); });
+    if (rows.length === 0 && pick !== "All") {
+      el.querySelector("tbody").innerHTML = `<tr><td colspan="${cols.length}" class="muted">Nobody who can play ${pick}.</td></tr>`;
+    }
   };
   draw();
 }
@@ -210,7 +230,8 @@ function renderMyTeam(view) {
     { key: "kept", label: "Keep", num: false, html: (p) =>
       `<button class="star ${p.kept ? "on" : ""}" data-id="${p.id}" data-keep="${!p.kept}" title="${p.kept ? "Kept: click to unkeep" : "Keep him"}">${p.kept ? "★" : "☆"}</button>` },
     { key: "name", label: "Player", num: false, html: (p) =>
-      `<div class="who"><div class="face" style="background-image:url(/photo/${p.id})"></div><div>${link(p.name)}<div class="sub">${esc(p.pos)} · ${esc(p.nba)}</div></div></div>` },
+      `<div class="who"><div class="face" style="background-image:url(/photo/${p.id})"></div><div>${link(p.name)}<div class="sub">${esc(p.nba)}</div></div></div>` },
+    posCol,
     { key: "lineup", label: "Your lineup", num: false, html: (p) =>
       `<span class="pill ${p.starting ? "start" : ""}">${esc(p.starting ? "starting " + p.lineup : p.lineup)}</span>` },
     { key: "game", label: "Today", num: false, html: (p) => p.game ? esc(p.game) : `<span class="muted">no game</span>` },
@@ -226,7 +247,7 @@ function renderMyTeam(view) {
     { key: "vs_proj", label: "Vs proj", num: true, html: (p) => signed(p.vs_proj),
       cls: (p) => p.vs_proj > 0 ? "good" : p.vs_proj < 0 ? "bad" : "" },
     { key: "fp_total", label: "FP total", num: true, html: (p) => num(p.fp_total, 0) },
-  ], m.roster, { rowClass: (p) => p.status_tag === "out" ? "out" : "" });
+  ], m.roster, { rowClass: (p) => p.status_tag === "out" ? "out" : "", positions: true });
 
   $("#roster").addEventListener("click", (e) => {
     const b = e.target.closest(".star");
@@ -299,13 +320,14 @@ function renderStreamers(el, streamers) {
     return;
   }
   table(el, [
-    { key: "name", label: "Add", num: false, html: (s) => playerCell(s.id, s.name, `${s.pos} · ${s.nba}`) +
+    { key: "name", label: "Add", num: false, html: (s) => playerCell(s.id, s.name, s.nba) +
       (s.waivers ? ` <span class="pill shaky">waivers ${esc(s.waivers)}</span>` : "") },
+    posCol,
     { key: "games", label: "Games", num: true, html: (s) => `${s.games} <span class="muted">(${s.light_games} light)</span>` },
     { key: "gain", label: "7 days", num: true, html: (s) => signed(s.gain, 0), cls: () => "good" },
     { key: "later", label: "Season", num: true, html: (s) => signed(s.later, 0), cls: (s) => s.later >= 0 ? "good" : "bad" },
     { key: "room", label: "Make room", num: false, cls: () => "clip" },
-  ], streamers, { sort: "gain" });
+  ], streamers, { sort: "gain", positions: true });
 }
 
 function playerCell(id, name, sub = "") {
