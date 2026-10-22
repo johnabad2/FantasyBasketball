@@ -155,8 +155,8 @@ async function runTrade() {
   if (seq !== tradeSeq || !$("#lab-summary")) return;  // a newer pick came in meanwhile
   const side = (s, cls) => `<div class="side ${cls}"><b>${esc(s.team)}</b>
     <div>Lineup ${num(s.before)} → ${num(s.after)} fp/g (<span class="${s.delta >= 0 ? "good" : "bad"}">${signed(s.delta)}</span>) · rank #${s.rank_before} → #${s.rank_after}</div>
-    ${s.next30 ? `<div>Next 30 days: ${num(s.next30[0], 0)} → ${num(s.next30[1], 0)} pts (<span class="${s.next30[1] >= s.next30[0] ? "good" : "bad"}">${signed(s.next30[1] - s.next30[0], 0)}</span>) · season ${signed(s.season, 0)}</div>`
-      : `<div>About ${signed(s.season, 0)} season points</div>`}
+    ${s.next30 ? `<div>Next 30 days: ${num(s.next30[0], 0)} → ${num(s.next30[1], 0)} pts (<span class="${s.next30[1] >= s.next30[0] ? "good" : "bad"}">${signed(s.next30[1] - s.next30[0], 0)}</span>)${s.ros === undefined ? ` · season ${signed(s.season, 0)}` : ""}</div>`
+      : s.ros === undefined ? `<div>About ${signed(s.season, 0)} season points</div>` : ""}
     ${s.ros !== undefined ? `<div>Rest of season (beyond free waiver moves): <span class="${s.ros >= 0 ? "good" : "bad"}">${signed(s.ros, 0)}</span>${s.looks_fair !== undefined ? ` · ${s.looks_fair ? '<span class="good">looks fair to them on ESPN&#39;s numbers</span>' : '<span class="warn">looks unfair to them on ESPN&#39;s numbers</span>'}` : ""}</div>` : ""}
     ${s.fixed ? `<div class="good">Fixes ${esc(s.fixed)}</div>` : ""}${s.created ? `<div class="warn">Creates: ${esc(s.created)}</div>` : ""}
     ${s.gives.length || s.gets.length ? `<div class="muted">Gives: ${esc(s.gives.join(", ") || "nothing")}<br>Gets: ${esc(s.gets.join(", ") || "nothing")}</div>` : ""}
