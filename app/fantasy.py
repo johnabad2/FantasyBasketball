@@ -38,6 +38,7 @@ MIN_AT_POSITION, MAX_AT_POSITION = 2, 3  # aim for 2-3 players at each main posi
 PRIOR_GAMES = 20    # ESPN's projection counts like this many games against a player's own (shrinkage)
 MINUTES_PRIOR = 8   # projected minutes count like this many games; last week's games count double
 RECENT_PRIOR = 5    # a hot/cold stretch is shrunk toward the baseline like this many games
+NO_PROJECTION_VALUE = 18.0  # what a player ESPN doesn't even project is assumed to be worth, until proven
 
 DEFAULT_THRESHOLDS = {
     "trend_pct": 0.25,       # recent form this far above/below baseline counts as hot/slumping
@@ -135,8 +136,8 @@ def form_of(player, year):
         baseline = rate * minutes
     elif proj_v:
         baseline = w * season_v + (1 - w) * proj_v
-    else:
-        baseline = season_v  # no projection (e.g. a late signing): his own numbers are all there is
+    else:  # no ESPN projection (a fringe player or late signing): pull him toward a bench-level value
+        baseline = (games * season_v + PRIOR_GAMES * NO_PROJECTION_VALUE) / (games + PRIOR_GAMES) if games else 0.0
     recent, recent_games = baseline, 0
     for key in ("last_15", "last_7"):
         split = stats.get(f"{year}_{key}", {})

@@ -12,10 +12,11 @@ NBA_GAMES = 82
 
 def availability(player, year):
     """Share of his team's games ESPN expects him to play (its projected games / 82), e.g. 64 -> 0.78.
-    Injury-prone players and minutes-managed vets come out lower. 1.0 when ESPN has no projection."""
+    Injury-prone players and minutes-managed vets come out lower. 0.75 when ESPN has no projection
+    (fringe players without one rarely play every game)."""
     from stats import games, split_of
     projected = games(split_of(player, year, "projected"))
-    return min(projected / NBA_GAMES, 1.0) if projected else 1.0
+    return min(projected / NBA_GAMES, 1.0) if projected else 0.75
 
 
 def nba_team_id(player):
