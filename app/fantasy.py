@@ -36,7 +36,7 @@ POSITIONS = ("PG", "SG", "SF", "PF", "C")
 MIN_AT_POSITION, MAX_AT_POSITION = 2, 3  # aim for 2-3 players at each main position
 
 PRIOR_GAMES = 20    # ESPN's projection counts like this many games against a player's own (shrinkage)
-MINUTES_PRIOR = 4   # projected minutes count like this many games; last week's games count double
+MINUTES_PRIOR = 8   # projected minutes count like this many games; last week's games count double
 RECENT_PRIOR = 5    # a hot/cold stretch is shrunk toward the baseline like this many games
 
 DEFAULT_THRESHOLDS = {
