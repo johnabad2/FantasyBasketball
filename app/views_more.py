@@ -271,13 +271,25 @@ def trade_lab(d, a_id, b_id, send=(), get=()):
                       "positions": [f"{pos} {s['pos_before'][pos]}→{s['pos_after'][pos]}" for pos in trade.POSITIONS
                                     if s["pos_before"][pos] != s["pos_after"][pos]],
                       "roster": [s["size_before"], s["size_after"]], "drop": s["drop"]})
-    # Fair by lineup strength first (trade.balance), then checked over the next 30 days too: trades
-    # where you come out ahead on both go to the top.
-    options = trade.balance(league, team_a, team_b, send, get, limit=16)
-    for o, (d30a, d30b) in zip(options, trade.next30_effects(league, team_a, team_b, options, d.get("injuries") or {}, fas)):
+    # Candidates that are close by lineup strength (trade.balance), then judged the way analysts do:
+    # rest-of-season lineup points above replacement for both teams (open spots filled from waivers,
+    # extra players cut), and whether it looks fair to them on ESPN's public projections.
+    import valuation
+    inj = d.get("injuries") or {}
+    fill = valuation.replacement_players(league, d.get("fas") or [])
+    A, B, cache = list(team_a.roster), list(team_b.roster), {}
+    if send or get:
+        ev = valuation.evaluate(league, A, B, send, get, fill, inj, cache)
+        sides[0]["ros"], sides[1]["ros"] = round(ev["me"]), round(ev["them"])
+        sides[1]["looks_fair"] = ev["looks_fair"]
+    options = trade.balance(league, team_a, team_b, send, get, limit=40)
+    for o in options:
+        ev = valuation.evaluate(league, A, B, set(o["send"]), set(o["get"]), fill, inj, cache)
+        o["season_a"], o["season_b"], o["fair"] = ev["me"], ev["them"], ev["looks_fair"]
+        o["plus"] = o["fair"] and ev["me"] >= valuation.MARGIN
+    options = sorted(options, key=lambda o: (not o["plus"], not o["fair"], -o["season_a"]))[:10]
+    for o, (d30a, d30b) in zip(options, trade.next30_effects(league, team_a, team_b, options, inj, fill)):
         o["d30a"], o["d30b"] = d30a, d30b
-        o["plus"] = o["da"] > 0.05 and d30a > 5  # you gain on both: lineup strength and the next 30 days
-    options = sorted(options, key=lambda o: not o["plus"])[:10]  # stable: keeps the fairness order within each group
     names = {t.team_id: t.team_name.strip() for t in league.teams}
     return {"a": team_a.team_id, "b": team_b.team_id, "send": sorted(send), "get": sorted(get),
             "verdict": trade.verdict(r), "sides": sides,
@@ -286,7 +298,8 @@ def trade_lab(d, a_id, b_id, send=(), get=()):
                          for tid in sorted(r["after"], key=lambda k: -r["after"][k])],
             "suggestions": [{"send": sorted(o["send"]), "get": sorted(o["get"]), "send_names": o["send_names"],
                              "get_names": o["get_names"], "da": round(o["da"], 1), "db": round(o["db"], 1),
-                             "d30a": round(o["d30a"]), "d30b": round(o["d30b"]), "plus": o["plus"]}
+                             "d30a": round(o["d30a"]), "d30b": round(o["d30b"]), "plus": o["plus"],
+                             "season_a": round(o["season_a"]), "season_b": round(o["season_b"]), "fair": o["fair"]}
                             for o in options],
             "suggest_title": ("Ways to even out this trade (adds up to 2 players)" if (send or get)
                               else f"Fair trades with {names[team_b.team_id]} (1-2 players each way)")}

@@ -46,7 +46,7 @@ def vs_projection(player, year, rules, min_games=3):
     return fp_per_game(season, rules) - fp_per_game(split_of(player, year, "projected"), rules)
 
 
-def projected_final(league, so_far=None, teams=None):
+def projected_final(league, so_far=None, teams=None, injuries=None):
     """{fantasy team id: (points so far, projected rest of season, projected final)} or None
     when the league has no NBA schedule (demo). Simulates each remaining day: a team scores
     with its best `slots` players whose NBA team plays that day (injured-reserve players sit).
@@ -59,30 +59,40 @@ def projected_final(league, so_far=None, teams=None):
     out = {}
     for team in (teams or league.teams):
         done = (so_far or {}).get(team.team_id, team.points_for)
-        rest = rest_of_season(league, team.roster, lineup_slots(team))
+        rest = rest_of_season(league, team.roster, lineup_slots(team), injuries)
         out[team.team_id] = (done, rest, done + rest)
     return out
 
 
-def rest_of_season(league, players, slots):
+def rest_of_season(league, players, slots, injuries=None):
     """Fantasy points `players` would score from now to the end of the season: each remaining day,
-    the best `slots` of them whose NBA team plays (injured-reserve players sit), each scaled by how
-    many of his games ESPN expects him to play. Bench players count
-    on days a starter has no game - which is why depth matters in a daily-lineup league."""
+    the best `slots` of them whose NBA team plays, each scaled by how many of his games ESPN expects
+    him to play and by the matchup. Injured players (out, or on IR) count from their expected return
+    date - two weeks from now if there's none. Bench players count on days a starter has no game,
+    which is why depth matters in a daily-lineup league."""
+    from datetime import date
+    from fantasy import OUT_STATUSES
     schedule = getattr(league, "pro_schedule", None) or {}
     today = getattr(league, "current_week", 1) or 1
     final = getattr(league, "finalScoringPeriod", None) or 174
     now_ms = time.time() * 1000
-    # expected value per scheduled game = base x the share of games he's expected to play
-    roster = [(form_of(p, league.year).baseline * availability(p, league.year), nba_team_id(p)) for p in players
-              if (p.injuryStatus or "") != "INJURY_RESERVE"]
+    roster = []
+    for p in players:
+        first = today
+        if (p.injuryStatus or "ACTIVE") in OUT_STATUSES or p.lineupSlot == "IR":
+            back = ((injuries or {}).get(p.playerId) or {}).get("return_date")
+            first = today + max((back - date.today()).days, 0) if back else today + 14
+        # expected value per scheduled game = base x the share of games he's expected to play
+        roster.append((form_of(p, league.year).baseline * availability(p, league.year), nba_team_id(p), first))
     import matchups
     table = matchups.for_league(league)
     total = 0.0
     for day in range(today, final + 1):
         key = str(day)
         playing = []
-        for value, tid in roster:
+        for value, tid, first in roster:
+            if day < first:
+                continue
             for game in schedule.get(tid, {}).get(key, []):
                 if day > today or game["date"] > now_ms:  # today: only games not started yet
                     playing.append(value * matchups.factor(table, matchups.opponent(game, tid)))

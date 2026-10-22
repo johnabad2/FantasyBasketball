@@ -108,8 +108,9 @@ function renderTradeLab(view) {
     </section>
     <section class="split three">
       <div class="card" id="lab-summary"><div class="muted">Working it out…</div></div>
-      <div class="card flush"><div class="pad"><h2 id="lab-sugg-head">Suggestions</h2><div class="sub">Fair by lineup strength (/g), checked over the next
-          30 days too. <span class="plus-key">Highlighted</span> = you gain on both, listed first. Click one to load it.</div></div>
+      <div class="card flush"><div class="pad"><h2 id="lab-sugg-head">Suggestions</h2><div class="sub">Season = rest-of-season lineup points beyond what you could get
+          free off waivers. Fair to them = it looks fair on ESPN's projections (what they see).
+          <span class="plus-key">Highlighted</span> = a real gain for you that they'd likely accept. Click one to load it.</div></div>
         <div id="lab-sugg"></div></div>
       <div class="card"><h2>Lineup strength</h2><div class="sub">fp/g of each team's starters · ○ before ● after</div>
         <div class="chart mid" id="lab-chart"></div></div>
@@ -156,6 +157,7 @@ async function runTrade() {
     <div>Lineup ${num(s.before)} → ${num(s.after)} fp/g (<span class="${s.delta >= 0 ? "good" : "bad"}">${signed(s.delta)}</span>) · rank #${s.rank_before} → #${s.rank_after}</div>
     ${s.next30 ? `<div>Next 30 days: ${num(s.next30[0], 0)} → ${num(s.next30[1], 0)} pts (<span class="${s.next30[1] >= s.next30[0] ? "good" : "bad"}">${signed(s.next30[1] - s.next30[0], 0)}</span>) · season ${signed(s.season, 0)}</div>`
       : `<div>About ${signed(s.season, 0)} season points</div>`}
+    ${s.ros !== undefined ? `<div>Rest of season (beyond free waiver moves): <span class="${s.ros >= 0 ? "good" : "bad"}">${signed(s.ros, 0)}</span>${s.looks_fair !== undefined ? ` · ${s.looks_fair ? '<span class="good">looks fair to them on ESPN&#39;s numbers</span>' : '<span class="warn">looks unfair to them on ESPN&#39;s numbers</span>'}` : ""}</div>` : ""}
     ${s.fixed ? `<div class="good">Fixes ${esc(s.fixed)}</div>` : ""}${s.created ? `<div class="warn">Creates: ${esc(s.created)}</div>` : ""}
     ${s.gives.length || s.gets.length ? `<div class="muted">Gives: ${esc(s.gives.join(", ") || "nothing")}<br>Gets: ${esc(s.gets.join(", ") || "nothing")}</div>` : ""}
     ${s.positions.length ? `<div class="muted">Positions: ${esc(s.positions.join(", "))}</div>` : ""}
@@ -167,10 +169,11 @@ async function runTrade() {
     table($("#lab-sugg"), [
       { key: "s", label: "Sends", num: false, html: (o) => esc(short(o.send_names)) },
       { key: "g", label: "Gets", num: false, html: (o) => esc(short(o.get_names)) },
-      { key: "da", label: "You /g", num: true, html: (o) => signed(o.da), cls: (o) => o.da > 0.05 ? "good" : o.da < -0.05 ? "bad" : "" },
+      { key: "season_a", label: "You season", num: true, html: (o) => signed(o.season_a, 0),
+        cls: (o) => o.season_a >= 40 ? "good" : o.season_a <= -40 ? "bad" : "" },
       { key: "d30a", label: "You 30d", num: true, html: (o) => signed(o.d30a, 0), cls: (o) => o.d30a > 5 ? "good" : o.d30a < -5 ? "bad" : "" },
-      { key: "db", label: "Them /g", num: true, html: (o) => signed(o.db), cls: () => "muted" },
-      { key: "d30b", label: "Them 30d", num: true, html: (o) => signed(o.d30b, 0), cls: () => "muted" },
+      { key: "season_b", label: "Them season", num: true, html: (o) => signed(o.season_b, 0), cls: () => "muted" },
+      { key: "fair", label: "Fair to them", num: false, html: (o) => o.fair ? '<span class="good">✓ looks fair</span>' : '<span class="muted">✗ unlikely</span>' },
     ], r.suggestions, { rowClass: (o) => "clickable " + (o.plus ? "plus" : "") });
     $("#lab-sugg").querySelectorAll("tbody tr").forEach((tr) => tr.onclick = () => {
       const o = r.suggestions[tr.dataset.i];

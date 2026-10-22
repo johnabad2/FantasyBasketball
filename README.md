@@ -202,7 +202,7 @@ The alerts:
 | Move X to IR | He's listed INJ (always IR-eligible), out beyond this week, and your IR slot is empty |
 | Check if X is IR-eligible | He's listed O and out beyond this week: O players can go on IR only once ESPN marks them IR-eligible, which ESPN doesn't publish to apps, so check his card on ESPN |
 | Stream X | A free agent would add 15+ points over the next 7 days |
-| Pick up / drop (consider) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days AND over the rest of the season (a drop is permanent) |
+| Pick up / drop (consider) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days AND gains 40+ rest-of-season lineup points (a drop is permanent) |
 | Opportunity | A free agent's teammate is out (or his minutes are up) and at his boosted value he beats one of your players |
 | Minutes down | One of your players is playing 5+ fewer minutes a game this week than usual (often a smaller role) |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
@@ -213,6 +213,29 @@ Tune any of these under `thresholds` in `config\config.json`.
 Pickup, streamer and trade suggestions never create a balance problem you don't already have
 (e.g. a 4th PG, or leaving you with 1 C). They also never touch players in a trade that's
 waiting to go through, since dropping one would break the deal.
+
+## How it values trades and pickups
+
+It uses the methods fantasy analysts use for trade values and pickups:
+
+- **Lineup points, not averages.** A move is worth the change in your starting lineup's points for
+  the rest of the season. That means each day's best 10 players, the schedule, matchups, the games
+  each player is expected to miss, and injured players counted only from their return date. A
+  player who would sit on your bench adds little.
+- **Value over replacement.** A trade that frees a roster spot is credited with the best free agent
+  you could add. One that overfills your roster costs your weakest player. Both teams first get the
+  free waiver moves anyone could make, so a trade only counts what you couldn't get for free.
+- **Regression to the mean.** Early-season numbers lean on ESPN's projection (games / (games + 20)),
+  so one big night doesn't turn a bench player into a must-add.
+- **Would they accept?** Other managers judge trades by the public numbers, so "looks fair to them"
+  is checked with ESPN's projected points per game. They may lose up to 1.5 a game.
+- **Margin.** Gains under 40 rest-of-season points are within the projections' noise, so pickups
+  below that aren't suggested. Trades the other manager would likely accept that gain you 40+ are
+  highlighted in Trade Lab.
+
+Sources: CBS Sports and FantasyPros trade value charts; Yahoo's articles on 2-for-1 trades and roster
+spots; FanGraphs on stat stabilization (how many games a stat needs before it means something);
+FFToday on trading strategy.
 
 ## How accurate are the projections?
 

@@ -43,10 +43,10 @@ def load(demo=False):
     mine, others, fas = analysis
     scores = stats.season_scores(league)
     live, weekly = stats.live_points(league, scores), stats.weekly_standings(league, scores)
-    projected = projections.projected_final(league, live, list(after.values()))
+    injuries = news.injuries() if real else {}
+    projected = projections.projected_final(league, live, list(after.values()), injuries)
     day = getattr(league, "current_week", 1) or 1
     today_pts = {tid: days[day] for tid, (_, days) in scores.items() if day in days}  # live; none in the demo
-    injuries = news.injuries() if real else {}
     values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in list(me.roster) + list(planned.roster)}
     week = planner.week(league, me.roster, values, injuries) if real else []
     if pending:  # from the day after a trade goes through, plan with the new roster

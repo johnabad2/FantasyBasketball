@@ -286,6 +286,11 @@ def upgrade_over(fa, droppable, roster, t, ahead=None):
             continue
         if season and season(fa) <= season(d):
             continue  # better this month, worse over the season: not worth a permanent drop
+        ros_gain = getattr(ahead, "ros_gain", None)
+        if ros_gain:
+            import valuation
+            if ros_gain(fa.player, d.player, roster) < valuation.MARGIN:
+                continue  # your lineup wouldn't actually score more over the season (he'd sit, or it's noise)
         return d
     return None
 
@@ -365,7 +370,12 @@ def next_30_days(league, injuries):
         if form.player.playerId not in season_cache:
             season_cache[form.player.playerId] = form.worth * planner.games_after(league, form.player, today, injuries)
         return season_cache[form.player.playerId]
+    def ros_gain(add, drop, roster):
+        """Rest-of-season lineup points from the swap (lineup-aware: a player who'd sit adds little)."""
+        import valuation
+        return valuation.pickup_gain(league, roster, add, drop, injuries)
     ahead.season = season
+    ahead.ros_gain = ros_gain
     return ahead
 
 
@@ -704,8 +714,9 @@ def cmd_alerts(league, cfg, do_notify, save_snapshot):
             import news
             import projections
             live = stats.live_points(league)
-            accuracy.log({"league": league, "fas": analysis[2], "live": live, "injuries": news.injuries(),
-                          "projected": projections.projected_final(league, live, list(after.values()))})
+            inj = news.injuries()
+            accuracy.log({"league": league, "fas": analysis[2], "live": live, "injuries": inj,
+                          "projected": projections.projected_final(league, live, list(after.values()), inj)})
         except Exception as e:  # never let bookkeeping break the alerts
             print(f"(couldn't save today's projections: {e})")
     if not alerts:

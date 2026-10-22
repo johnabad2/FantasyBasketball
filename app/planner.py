@@ -238,6 +238,9 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
             later = fa_later - values[drop.playerId] * games_after(league, drop, after, injuries)
             if gain + later <= 0:
                 continue  # wins this week but loses over the season: the dropped player is better overall
+            import valuation
+            if valuation.pickup_gain(league, roster, fa, drop, injuries) < 0:
+                continue  # your lineup scores less over the rest of the season with the swap
             if best_drop is None or gain > best_drop[0] + 0.05:
                 best_drop = (gain, drop, later)
         # a sure IR move beats any drop; an uncertain one is shown together with the drop fallback
