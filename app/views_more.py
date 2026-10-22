@@ -241,6 +241,10 @@ def trade_lab(d, a_id, b_id, send=(), get=()):
     team_b = teams.get(b_id)
     if team_b is None or team_b.team_id == team_a.team_id:
         team_b = next(t for t in league.teams if t.team_id != team_a.team_id)
+    # the best healthy free agents (not on waivers): who a team left with an open spot would add
+    waivers = getattr(league, "_fh_waivers", None) or {}
+    fas = [f.player for f in sorted(d.get("fas") or [], key=lambda f: -f.worth)
+           if f.healthy and f.player.playerId not in waivers][:3]
     send = {p for p in send if any(x.playerId == p for x in team_a.roster)}
     get = {p for p in get if any(x.playerId == p for x in team_b.roster)}
     r = trade.simulate(league, team_a, team_b, send, get)
@@ -251,7 +255,7 @@ def trade_lab(d, a_id, b_id, send=(), get=()):
         gives = r["sent"] if key == "a" else r["got"]
         gets = r["got"] if key == "a" else r["sent"]
         look = (trade.outlook(league, s["team"], {f.player.playerId for f in gives}, [f.player for f in gets],
-                              d.get("injuries") or {}) if (gives or gets) else None)
+                              d.get("injuries") or {}, free_agents=fas) if (gives or gets) else None)
         sides.append({"team": s["team"].team_name.strip(), "before": round(s["before"], 1),
                       "after": round(s["after"], 1), "delta": round(s["delta"], 1),
                       "rank_before": s["rank_before"], "rank_after": s["rank_after"], "season": round(s["delta"] * gl),
@@ -264,7 +268,13 @@ def trade_lab(d, a_id, b_id, send=(), get=()):
                       "positions": [f"{pos} {s['pos_before'][pos]}→{s['pos_after'][pos]}" for pos in trade.POSITIONS
                                     if s["pos_before"][pos] != s["pos_after"][pos]],
                       "roster": [s["size_before"], s["size_after"]], "drop": s["drop"]})
-    options = trade.balance(league, team_a, team_b, send, get)
+    # Fair by lineup strength first (trade.balance), then checked over the next 30 days too: trades
+    # where you come out ahead on both go to the top.
+    options = trade.balance(league, team_a, team_b, send, get, limit=16)
+    for o, (d30a, d30b) in zip(options, trade.next30_effects(league, team_a, team_b, options, d.get("injuries") or {}, fas)):
+        o["d30a"], o["d30b"] = d30a, d30b
+        o["plus"] = o["da"] > 0.05 and d30a > 5  # you gain on both: lineup strength and the next 30 days
+    options = sorted(options, key=lambda o: not o["plus"])[:10]  # stable: keeps the fairness order within each group
     names = {t.team_id: t.team_name.strip() for t in league.teams}
     return {"a": team_a.team_id, "b": team_b.team_id, "send": sorted(send), "get": sorted(get),
             "verdict": trade.verdict(r), "sides": sides,
@@ -272,7 +282,8 @@ def trade_lab(d, a_id, b_id, send=(), get=()):
                           "side": 0 if tid == team_a.team_id else 1 if tid == team_b.team_id else None}
                          for tid in sorted(r["after"], key=lambda k: -r["after"][k])],
             "suggestions": [{"send": sorted(o["send"]), "get": sorted(o["get"]), "send_names": o["send_names"],
-                             "get_names": o["get_names"], "da": round(o["da"], 1), "db": round(o["db"], 1)}
+                             "get_names": o["get_names"], "da": round(o["da"], 1), "db": round(o["db"], 1),
+                             "d30a": round(o["d30a"]), "d30b": round(o["d30b"]), "plus": o["plus"]}
                             for o in options],
             "suggest_title": ("Ways to even out this trade (adds up to 2 players)" if (send or get)
                               else f"Fair trades with {names[team_b.team_id]} (1-2 players each way)")}

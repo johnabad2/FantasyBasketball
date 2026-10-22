@@ -107,7 +107,8 @@ function renderTradeLab(view) {
     </section>
     <section class="split three">
       <div class="card" id="lab-summary"><div class="muted">Working it out…</div></div>
-      <div class="card flush"><div class="pad"><h2 id="lab-sugg-head">Suggestions</h2><div class="sub">Click one to load it.</div></div>
+      <div class="card flush"><div class="pad"><h2 id="lab-sugg-head">Suggestions</h2><div class="sub">Fair by lineup strength (/g), checked over the next
+          30 days too. <span class="plus-key">Highlighted</span> = you gain on both, listed first. Click one to load it.</div></div>
         <div id="lab-sugg"></div></div>
       <div class="card"><h2>Lineup strength</h2><div class="sub">fp/g of each team's starters · ○ before ● after</div>
         <div class="chart mid" id="lab-chart"></div></div>
@@ -162,9 +163,11 @@ async function runTrade() {
     table($("#lab-sugg"), [
       { key: "s", label: "Sends", num: false, html: (o) => esc(short(o.send_names)) },
       { key: "g", label: "Gets", num: false, html: (o) => esc(short(o.get_names)) },
-      { key: "da", label: "You", num: true, html: (o) => signed(o.da) },
-      { key: "db", label: "Them", num: true, html: (o) => signed(o.db) },
-    ], r.suggestions, { rowClass: (o) => "clickable " + (Math.min(o.da, o.db) >= -0.05 ? "up" : "") });
+      { key: "da", label: "You /g", num: true, html: (o) => signed(o.da), cls: (o) => o.da > 0.05 ? "good" : o.da < -0.05 ? "bad" : "" },
+      { key: "d30a", label: "You 30d", num: true, html: (o) => signed(o.d30a, 0), cls: (o) => o.d30a > 5 ? "good" : o.d30a < -5 ? "bad" : "" },
+      { key: "db", label: "Them /g", num: true, html: (o) => signed(o.db), cls: () => "muted" },
+      { key: "d30b", label: "Them 30d", num: true, html: (o) => signed(o.d30b, 0), cls: () => "muted" },
+    ], r.suggestions, { rowClass: (o) => "clickable " + (o.plus ? "plus" : "") });
     $("#lab-sugg").querySelectorAll("tbody tr").forEach((tr) => tr.onclick = () => {
       const o = r.suggestions[tr.dataset.i];
       lab.send = o.send; lab.get = o.get; drawLabLists(); runTrade();

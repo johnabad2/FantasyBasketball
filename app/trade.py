@@ -282,7 +282,7 @@ def describe_fix(fixes, whose="your"):
     return ", ".join(f"{whose} extra {pos}" if kind == "many" else f"{whose} thin {pos}" for kind, pos in fixes)
 
 
-def outlook(league, team, out_ids, incoming, injuries, days=30):
+def outlook(league, team, out_ids, incoming, injuries, days=30, free_agents=()):
     """What a trade does to one team: expected points over the next `days` days (best lineup each
     day, schedule, injuries and matchups included) before and after, and its position balance.
     {before, after (None without a schedule), fixed: [(kind, pos)], created: [text]}."""
@@ -290,11 +290,48 @@ def outlook(league, team, out_ids, incoming, injuries, days=30):
     from fantasy import balance_problems, unbalances
     before = list(team.roster)
     leaving = [p for p in before if p.playerId in out_ids]
-    after = [p for p in before if p.playerId not in out_ids] + list(incoming)
-    vals = {p.playerId: form_of(p, league.year).baseline for p in before + list(incoming)}
+    vals = {p.playerId: form_of(p, league.year).baseline for p in before + list(incoming) + list(free_agents)}
+    after = fit_roster([p for p in before if p.playerId not in out_ids] + list(incoming),
+                       len(before), vals, free_agents)
     pts = (lambda roster: sum(d["points"] for d in planner.week(league, roster, vals, injuries, days))) \
         if getattr(league, "pro_schedule", None) else (lambda roster: None)
     problems_after = balance_problems(after)
     return {"before": pts(before), "after": pts(after),
             "fixed": [k for k in balance_problems(before) if k not in problems_after],
             "created": unbalances(before, incoming, leaving)}
+
+
+def fit_roster(roster, size, vals, free_agents=()):
+    """Rosters stay the same size after a trade (size = players before it, IR included: an injured
+    player coming in still needs a spot when your IR is already full). A team that gets more players
+    than it sends drops its lowest-value players; a team left with an open spot picks up the best
+    free agents (the order given), as it would in real life."""
+    extra = len(roster) - size
+    if extra > 0:
+        cut = {p.playerId for p in sorted(roster, key=lambda p: vals.get(p.playerId, 0))[:extra]}
+        return [p for p in roster if p.playerId not in cut]
+    if extra < 0:
+        return list(roster) + list(free_agents)[:-extra]
+    return list(roster)
+
+
+def next30_effects(league, team_a, team_b, options, injuries, free_agents=(), days=30):
+    """For each balance() option, (change in team A's points, change in team B's points) over the
+    next `days` days: best lineup each day, schedule, injuries and matchups included, rosters kept
+    the same size (fit_roster; free_agents = the best healthy ones, best first). Each team's 'before'
+    is worked out once. [(0, 0), ...] without an NBA schedule (demo)."""
+    if not getattr(league, "pro_schedule", None):
+        return [(0.0, 0.0) for _ in options]
+    import planner
+    A, B, fas = list(team_a.roster), list(team_b.roster), list(free_agents)
+    vals = {p.playerId: form_of(p, league.year).baseline for p in A + B + fas}
+    pts = lambda roster: sum(d["points"] for d in planner.week(league, roster, vals, injuries, days))
+    base_a, base_b = pts(A), pts(B)
+    size_a, size_b = len(A), len(B)
+    out = []
+    for o in options:
+        s, g = set(o["send"]), set(o["get"])
+        a_after = fit_roster([p for p in A if p.playerId not in s] + [p for p in B if p.playerId in g], size_a, vals, fas)
+        b_after = fit_roster([p for p in B if p.playerId not in g] + [p for p in A if p.playerId in s], size_b, vals, fas)
+        out.append((pts(a_after) - base_a, pts(b_after) - base_b))
+    return out
