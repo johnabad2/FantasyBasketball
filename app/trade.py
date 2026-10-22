@@ -290,7 +290,9 @@ def outlook(league, team, out_ids, incoming, injuries, days=30, free_agents=()):
     from fantasy import balance_problems, unbalances
     before = list(team.roster)
     leaving = [p for p in before if p.playerId in out_ids]
-    vals = {p.playerId: form_of(p, league.year).baseline for p in before + list(incoming) + list(free_agents)}
+    from projections import availability  # expected points per scheduled game: injury-prone players miss some
+    vals = {p.playerId: form_of(p, league.year).baseline * availability(p, league.year)
+            for p in before + list(incoming) + list(free_agents)}
     after = fit_roster([p for p in before if p.playerId not in out_ids] + list(incoming),
                        len(before), vals, free_agents)
     pts = (lambda roster: sum(d["points"] for d in planner.week(league, roster, vals, injuries, days))) \
@@ -324,7 +326,8 @@ def next30_effects(league, team_a, team_b, options, injuries, free_agents=(), da
         return [(0.0, 0.0) for _ in options]
     import planner
     A, B, fas = list(team_a.roster), list(team_b.roster), list(free_agents)
-    vals = {p.playerId: form_of(p, league.year).baseline for p in A + B + fas}
+    from projections import availability  # expected points per scheduled game: injury-prone players miss some
+    vals = {p.playerId: form_of(p, league.year).baseline * availability(p, league.year) for p in A + B + fas}
     pts = lambda roster: sum(d["points"] for d in planner.week(league, roster, vals, injuries, days))
     base_a, base_b = pts(A), pts(B)
     size_a, size_b = len(A), len(B)
