@@ -35,6 +35,10 @@ BENCH_SLOTS = {"BE", "IR"}
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
 MIN_AT_POSITION, MAX_AT_POSITION = 2, 3  # aim for 2-3 players at each main position
 
+PRIOR_GAMES = 20    # ESPN's projection counts like this many games against a player's own (shrinkage)
+MINUTES_PRIOR = 4   # projected minutes count like this many games; last week's games count double
+RECENT_PRIOR = 5    # a hot/cold stretch is shrunk toward the baseline like this many games
+
 DEFAULT_THRESHOLDS = {
     "trend_pct": 0.25,       # recent form this far above/below baseline counts as hot/slumping
     "min_games": 5,          # games played before trends are trusted
@@ -71,9 +75,12 @@ def split_value(split):
 @dataclass
 class Form:
     player: object
-    baseline: float  # what the player "really" is: season avg, blended with projection early on
-    recent: float    # last 15 days (falls back to last 7, then baseline)
+    baseline: float  # what the player "really" is per game: expected minutes x fantasy points per minute
+    recent: float    # last 15 days as played (falls back to last 7, then baseline)
     games: int
+    recent_games: int = 0  # games behind `recent`
+    minutes: float = 0.0   # expected minutes per game
+    rate: float = 0.0      # expected fantasy points per minute
 
     @property
     def trend(self):
@@ -81,7 +88,11 @@ class Form:
 
     @property
     def worth(self):
-        return (self.baseline + self.recent) / 2
+        """Value for pickups and trades: baseline, nudged by recent form. A short hot or cold
+        stretch only counts a little (it's shrunk toward the baseline like everything else)."""
+        g = self.recent_games
+        recent = (g * self.recent + RECENT_PRIOR * self.baseline) / (g + RECENT_PRIOR) if g else self.baseline
+        return (self.baseline + recent) / 2
 
     @property
     def status(self):
@@ -92,21 +103,47 @@ class Form:
         return self.status not in OUT_STATUSES
 
 
+def _avg(split, key):
+    return float(((split or {}).get("avg") or {}).get(key) or 0)
+
+
+def _gp(split):
+    return int(((split or {}).get("total") or {}).get("GP") or ((split or {}).get("avg") or {}).get("GP") or 0)
+
+
 def form_of(player, year):
+    """A player's expected fantasy points per game = expected minutes x fantasy points per minute.
+
+    - Points per minute is a skill and changes slowly: his own season, shrunk toward ESPN's
+      projection by games / (games + PRIOR_GAMES), so one huge (or awful) night barely moves it.
+    - Minutes follow his role and change fast: ESPN's projected minutes, his season minutes and
+      his last week's minutes (counted double), so a new starting job or a benching shows quickly.
+    Falls back to a plain shrunk average when minutes aren't available (e.g. no projection)."""
     stats = player.stats
-    season = stats.get(f"{year}_total", {})
-    games = int((season.get("total") or {}).get("GP", 0) or 0)
-    season_v = split_value(season)
-    proj_v = split_value(stats.get(f"{year}_projected", {}))
-    # Lean on projections until there's a real sample; fully trust the season after 10 games.
-    weight = min(games, 10) / 10
-    baseline = weight * season_v + (1 - weight) * proj_v if proj_v else season_v
-    recent = next(
-        (v for v in (split_value(stats.get(f"{year}_last_15", {})),
-                     split_value(stats.get(f"{year}_last_7", {}))) if v),
-        baseline,
-    )
-    return Form(player, round(baseline, 2), round(recent, 2), games)
+    season, proj = stats.get(f"{year}_total", {}), stats.get(f"{year}_projected", {})
+    last7 = stats.get(f"{year}_last_7", {})
+    games = _gp(season)
+    season_v, proj_v = split_value(season), split_value(proj)
+    s_min, p_min = _avg(season, "MPG") or _avg(season, "MIN"), _avg(proj, "MPG") or _avg(proj, "MIN")
+    r_min, r_gp = _avg(last7, "MPG") or _avg(last7, "MIN"), _gp(last7)
+    w = games / (games + PRIOR_GAMES)
+    minutes = rate = 0.0
+    if proj_v and p_min and (not games or s_min):
+        rate = w * (season_v / s_min if games else 0) + (1 - w) * (proj_v / p_min)
+        minutes = ((MINUTES_PRIOR * p_min + games * s_min + 2 * r_gp * r_min)
+                   / (MINUTES_PRIOR + games + 2 * r_gp))
+        baseline = rate * minutes
+    elif proj_v:
+        baseline = w * season_v + (1 - w) * proj_v
+    else:
+        baseline = season_v  # no projection (e.g. a late signing): his own numbers are all there is
+    recent, recent_games = baseline, 0
+    for key in ("last_15", "last_7"):
+        split = stats.get(f"{year}_{key}", {})
+        if split_value(split):
+            recent, recent_games = split_value(split), _gp(split)
+            break
+    return Form(player, round(baseline, 2), round(recent, 2), games, recent_games, round(minutes, 1), round(rate, 3))
 
 
 # ---------------------------------------------------------------- position balance
@@ -233,10 +270,12 @@ def set_keep(player, keep=True):
 def upgrade_over(fa, droppable, roster, t, ahead=None):
     """The weakest of your droppable players this free agent is a clear upgrade on, or None:
     better per game by waiver_margin, no new position imbalance, and (when ahead(form) gives
-    (points, games) for the next 30 days) more expected points over those days too - so a player
-    with fewer games or more missed games isn't suggested just for his per-game number."""
+    (points, games) for the next 30 days) more expected points over those days AND over the rest
+    of the season (ahead.season) - a drop is permanent, so it has to pay off for the whole season,
+    not just this month or on a per-game number."""
     if not fa.healthy:
         return None
+    season = getattr(ahead, "season", None)
     for d in droppable:  # weakest first
         if fa.worth <= d.worth * (1 + t["waiver_margin"]):
             return None  # the rest are even better per game
@@ -244,6 +283,8 @@ def upgrade_over(fa, droppable, roster, t, ahead=None):
             continue
         if ahead and ahead(fa) and ahead(fa)[0] <= ahead(d)[0]:
             continue
+        if season and season(fa) <= season(d):
+            continue  # better this month, worse over the season: not worth a permanent drop
         return d
     return None
 
@@ -257,10 +298,27 @@ def opportunity_alerts(league, mine, injuries, t, leaving=(), ahead=None, limit=
                        key=lambda f: f.worth)
     roster = [f.player for f in mine]
     alerts = []
+    import planner
+    today = getattr(league, "current_week", 1) or 1
+    final = getattr(league, "finalScoringPeriod", None) or 174
+
+    def season_points(form, value_until=None, until_day=None):
+        """Rest-of-season points; at value_until up to until_day, then his normal worth."""
+        if value_until is None or until_day is None:
+            return form.worth * planner.games_after(league, form.player, today, injuries)
+        boosted = value_until * planner.expected_games(league, form.player, today, min(until_day, final), injuries)
+        return boosted + form.worth * planner.games_after(league, form.player, until_day + 1, injuries)
+
     for o in opportunity.opportunities(league, injuries):
-        boosted = replace(o["form"], baseline=o["boosted"], recent=o["boosted"])
+        boosted = replace(o["form"], baseline=o["boosted"], recent=o["boosted"], recent_games=0)
         drop = upgrade_over(boosted, droppable, roster, t, ahead=None)  # 30 days at the boost overstates a short absence
         if not drop:
+            continue
+        # a drop is permanent: he must also beat that player over the whole season, at the boosted
+        # value only until the injured teammate is due back (no return date: assume two weeks)
+        back = o.get("back")
+        until = today + ((back - __import__("datetime").date.today()).days if back else 14)
+        if season_points(o["form"], o["boosted"], until) <= season_points(drop):
             continue
         droppable.remove(drop)
         p = o["player"]
@@ -291,14 +349,22 @@ def minutes_alerts(mine, year, drop=5):
 
 
 def next_30_days(league, injuries):
-    """A cached form -> (expected points, expected games) over the next 30 days."""
+    """A cached form -> (expected points, expected games) over the next 30 days. Also has
+    .season(form): expected points over the rest of the season (worth x expected games)."""
     import planner
-    cache = {}
+    cache, season_cache = {}, {}
+    today = getattr(league, "current_week", 1) or 1
 
     def ahead(form):
         if form.player.playerId not in cache:
             cache[form.player.playerId] = planner.next_days(league, form, injuries, 30)
         return cache[form.player.playerId]
+
+    def season(form):
+        if form.player.playerId not in season_cache:
+            season_cache[form.player.playerId] = form.worth * planner.games_after(league, form.player, today, injuries)
+        return season_cache[form.player.playerId]
+    ahead.season = season
     return ahead
 
 
@@ -356,7 +422,7 @@ def waiver_alerts(mine, free_agents, t, leaving=(), ahead=None, league=None):
                 (fa_pts, fa_g), (d_pts, d_g) = ahead(fa), ahead(worst)
                 detail += (f"\n      Next 30 days: ~{fa_pts:.0f} pts ({fa_g:.0f} games expected) vs "
                            f"~{d_pts:.0f} ({d_g:.0f}): {fa_pts - d_pts:+.0f}")
-            alerts.append(Alert(f"fa:{fa.player.playerId}:{worst.player.playerId}", 1,
+            alerts.append(Alert(f"fa:{fa.player.playerId}:{worst.player.playerId}", 2,
                                 _cap(get_text(league, fa.player) if league else f"pick up {fa.player.name}")
                                 + f", drop {worst.player.name}", detail))
     return alerts

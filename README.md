@@ -183,6 +183,11 @@ the more history you get. `data\` stays on your PC; it's in `.gitignore`.
 - **base**: season fantasy points per game. Early in the season it's blended with ESPN's
   projection until the player has 10 games. Category leagues use a rough composite of the
   counting stats instead.
+- **base** (how good a player really is per game) = expected **minutes** x fantasy points **per minute**.
+  Points per minute is his own season shrunk toward ESPN's projection by games / (games + 20), so one
+  huge or awful night barely moves it; minutes blend ESPN's projection, his season and his last week
+  (counted double), so a new role shows quickly. **worth** (used for pickups and trades) adds recent
+  form, again shrunk so a one- or two-game streak only counts a little.
 - **L15**: average over the last 15 days.
 - **trend**: L15 against base. ±25% or more counts as hot or slumping (after 5 games); shown in
   green or red on My Team rather than as an alert.
@@ -197,7 +202,7 @@ The alerts:
 | Move X to IR | He's listed INJ (always IR-eligible), out beyond this week, and your IR slot is empty |
 | Check if X is IR-eligible | He's listed O and out beyond this week: O players can go on IR only once ESPN marks them IR-eligible, which ESPN doesn't publish to apps, so check his card on ESPN |
 | Stream X | A free agent would add 15+ points over the next 7 days |
-| Pick up / drop (do now) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days (his schedule x how often ESPN expects him to play) |
+| Pick up / drop (consider) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days AND over the rest of the season (a drop is permanent) |
 | Opportunity | A free agent's teammate is out (or his minutes are up) and at his boosted value he beats one of your players |
 | Minutes down | One of your players is playing 5+ fewer minutes a game this week than usual (often a smaller role) |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
