@@ -240,8 +240,8 @@ FFToday on trading strategy.
 ## How accurate are the projections?
 
 Every day (when the app loads, or the scheduled check runs) it saves what it projects for every
-rostered player, the best free agents and every team in `dataccuracy.db`. After a week or more,
-`.venv\Scripts\python appantasy.py accuracy` shows how far off it was: players' projected points per
+rostered player, the best free agents and every team in `data\accuracy.db`. After a week or more,
+`.venv\Scripts\python app\fantasy.py accuracy` shows how far off it was: players' projected points per
 game vs what they then averaged (next to two simple guesses, their season average and ESPN's
 projection, so you can see whether the app beats them), and teams' projected 7-day points vs what
 they scored. Use it to tune the model rather than guessing.
