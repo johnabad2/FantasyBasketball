@@ -12,6 +12,9 @@ from projections import availability, nba_team_id
 
 DEFAULT_SLOTS = ["PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UT", "UT"]
 LONG_TERM_SLACK = 0.0  # never drop someone better per game than the streamer (fp/g)
+STREAM_SLACK = 1.0     # daily streaming: only drop players at most this much better (fp/g) than the best free agent
+STREAM_MIN = 8.0       # daily streaming: smallest gain (points that day) worth a move
+STREAM_MAX = 3         # daily streaming: most moves suggested per day
 
 
 def lineup_slots(league):
@@ -193,7 +196,8 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
     # drop candidates: the lowest-value players, plus anyone injured (they score nothing meanwhile)
     from fantasy import load_keep
     import feed
-    keep = load_keep() | feed.leaving(league, team.team_id)  # never drop: kept, or already traded away
+    from fantasy import committed  # never drop: kept, already traded away, or in your pending claims/offers
+    keep = load_keep() | feed.leaving(league, team.team_id) | committed(league, getattr(team, "_team", team))
     by_value = sorted((p for p in roster if p.lineupSlot != "IR" and p.playerId not in keep),
                       key=lambda p: values[p.playerId])
     drops = list(dict.fromkeys(by_value[:drop_pool] + [p for p in roster if (p.injuryStatus or "") in OUT_STATUSES
@@ -254,6 +258,74 @@ def streamers(league, team, free_agents, injuries, days=7, top=12, drop_pool=4):
                         "drop_gain": best_drop[0] if best_drop else None, "gain": gain, "games": len(games),
                         "light_games": sum(1 for d in games if d in light_days)})
     return sorted(out, key=lambda x: -x["gain"])[:top]
+
+
+def daily_streams(league, team, free_agents, injuries):
+    """Daily streaming: in a daily-lineup league most days leave lineup slots empty (with 13 players
+    only about half have a game), and in a total-points league every filled slot counts. So keep a
+    core and cycle the replaceable end of the bench: drop a player who has no game today and is no
+    better than the free agents (he, or someone like him, can be picked up again), add a free agent
+    who plays today in a slot that would otherwise be empty. Today until its games start, then
+    tomorrow. Returns {day, label, moves: [(fa form, drop, gain)]}."""
+    if not getattr(league, "pro_schedule", None):
+        return None
+    from fantasy import balance_problems, load_keep, waivers
+    import feed
+    today = getattr(league, "current_week", 1) or 1
+    now_ms = time.time() * 1000
+    roster = [p for p in team.roster if p.lineupSlot != "IR"]
+    values = {p.playerId: form_of(p, league.year).baseline for p in team.roster}
+    on_waivers = waivers(league)
+    pool = [f for f in free_agents if f.healthy and f.player.proTeam != "FA" and f.baseline > 0
+            and f.player.playerId not in on_waivers]
+    if not pool:
+        return None
+    best_fa = max(f.baseline for f in pool)
+    from fantasy import committed
+    keep = load_keep() | feed.leaving(league, team.team_id) | committed(league, getattr(team, "_team", team))
+    day, label = today, "today"
+    if not any(g and g["date"] > now_ms for p in roster + [f.player for f in pool[:30]]
+               for g in [_game(league, p, today)]):
+        day, label = today + 1, "tomorrow"  # today's games have all started
+    not_started = day == today
+    slots = list(lineup_slots(league))
+    if not_started:  # players already playing today keep their slots
+        for p in team.roster:
+            g = _game(league, p, day)
+            if p.lineupSlot in slots and g is not None and g["date"] <= now_ms and p.lineupSlot not in ("BE", "IR"):
+                slots.remove(p.lineupSlot)
+
+    def points(players, vals):
+        return sum(c[0] for c in best_lineup(_cands(league, players, vals, day, injuries, not_started), slots).values())
+
+    moves, used = [], set()
+    while len(moves) < STREAM_MAX:
+        base = points(roster, values)
+        best = None
+        drops = [p for p in roster if p.playerId not in keep and values[p.playerId] <= best_fa + STREAM_SLACK
+                 and _game(league, p, day) is None]
+        few_before = {pos for (k, pos) in balance_problems(roster) if k == "few"}
+        for f in pool:
+            if f.player.playerId in used or not _available(f.player, _game(league, f.player, day), injuries):
+                continue
+            g = _game(league, f.player, day)
+            if not_started and g["date"] <= now_ms:
+                continue
+            vals = {**values, f.player.playerId: f.baseline}
+            for drop in sorted(drops, key=lambda p: values[p.playerId]):
+                after = [p for p in roster if p is not drop] + [f.player]
+                if {pos for (k, pos) in balance_problems(after) if k == "few"} - few_before:
+                    continue  # would leave you short at a position
+                gain = points(after, vals) - base
+                if best is None or gain > best[2]:
+                    best = (f, drop, gain, after, vals)
+                break  # the weakest droppable player is the one to cycle
+        if not best or best[2] < STREAM_MIN:
+            break
+        f, drop, gain, roster, values = best
+        used.add(f.player.playerId)
+        moves.append((f, drop, gain))
+    return {"day": day, "label": label, "moves": moves}
 
 
 def today_moves(league, team, injuries):

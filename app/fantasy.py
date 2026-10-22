@@ -404,6 +404,29 @@ def waivers(league):
     return league._fh_waivers
 
 
+def committed(league, team):
+    """Ids of your players tied up in your own pending moves: the drop in a waiver claim (dropping
+    him first makes the claim fail) or a player in a trade offer you've made. Never suggest
+    dropping them. Cached on the league object; empty without ESPN (demo)."""
+    if getattr(league, "_fh_committed", None) is None:
+        out = set()
+        if getattr(league, "pro_schedule", None):
+            mine = {p.playerId for p in team.roster}
+            try:
+                data = league.espn_request.league_get(
+                    params={"view": "mTransactions2", "scoringPeriodId": league.current_week})
+                for t in data.get("transactions", []):
+                    if t.get("teamId") != team.team_id or t.get("status") != "PENDING":
+                        continue
+                    if t.get("type") in ("WAIVER", "TRADE_PROPOSAL"):
+                        out |= {i.get("playerId") for i in t.get("items", [])
+                                if i.get("type") in ("DROP", "TRADE") and i.get("playerId") in mine}
+            except Exception:
+                pass
+        league._fh_committed = out
+    return league._fh_committed
+
+
 def _cap(text):
     return text[:1].upper() + text[1:]
 
@@ -561,6 +584,24 @@ def streamer_alerts(league, my_team, fas, injuries, min_gain=15):
                   f"{s['light_games']} of them on days you have empty lineup slots.")]
 
 
+def daily_stream_alerts(league, my_team, fas, injuries):
+    """One alert per daily streaming move (planner.daily_streams)."""
+    import planner
+    plan = planner.daily_streams(league, my_team, fas, injuries)
+    if not plan or not plan["moves"]:
+        return []
+    out = []
+    for f, drop, gain in plan["moves"]:
+        p = f.player
+        out.append(Alert(f"daily:{plan['day']}:{p.playerId}:{drop.playerId}", 1 if plan["label"] == "today" else 2,
+                         f"Stream {plan['label']}: add {p.name}, drop {drop.name} (+{gain:.0f} pts {plan['label']})",
+                         f"{p.name} ({p.position}, {p.proTeam}, base {f.baseline:.1f}) plays {plan['label']} in a slot that "
+                         f"would otherwise be empty. {drop.name} (base {form_of(drop, league.year).baseline:.1f}) has no "
+                         f"game {plan['label']} and is no better than the free agents, so someone like him can be "
+                         f"picked up again. Players you drop go on waivers for 2 days."))
+    return out
+
+
 def analyze(league, my_team, fa_count=75, teams=None):
     """Form for your roster, every other roster, and the free-agent pool. teams: the teams to use
     (e.g. with pending trades applied); defaults to the league's."""
@@ -592,7 +633,8 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
     if real:
         alerts += opportunity_alerts(league, mine, injuries, thresholds, leaving) + minutes_alerts(mine, league.year)
         alerts += (status_alerts(mine, injuries) + lineup_alerts(league, today_team, injuries)
-                   + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries))
+                   + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries)
+                   + daily_stream_alerts(league, my_team, fas, injuries))
     alerts += trade_alerts(mine, others, thresholds, leaving)
     return sorted(alerts, key=lambda a: a.priority)
 

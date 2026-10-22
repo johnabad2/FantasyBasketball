@@ -202,6 +202,7 @@ The alerts:
 | Move X to IR | He's listed INJ (always IR-eligible), out beyond this week, and your IR slot is empty |
 | Check if X is IR-eligible | He's listed O and out beyond this week: O players can go on IR only once ESPN marks them IR-eligible, which ESPN doesn't publish to apps, so check his card on ESPN |
 | Stream X | A free agent would add 15+ points over the next 7 days |
+| Stream today / tomorrow | Daily streaming: a free agent plays today in a lineup slot that would otherwise be empty, and you have a bench player with no game today who is no better than the free agents (so someone like him can be picked up again). Up to 3 a day |
 | Pick up / drop (consider) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days AND gains 40+ rest-of-season lineup points (a drop is permanent) |
 | Opportunity | A free agent's teammate is out (or his minutes are up) and at his boosted value he beats one of your players |
 | Minutes down | One of your players is playing 5+ fewer minutes a game this week than usual (often a smaller role) |
@@ -209,6 +210,12 @@ The alerts:
 | Roster balance | You have more than 3 or fewer than 2 players at a main position (e.g. 4 PGs, or 1 C). IR players count toward "too many" but not "too few" |
 
 Tune any of these under `thresholds` in `config\config.json`.
+
+Daily streaming is the biggest lever in this league. With 13 players, only about half have a game
+on a given day, so every team fills about 5.5 of its 10 lineup slots a day. The league counts total
+points and allows unlimited pickups, so a slot filled by a streamer is pure gain. Cycling 2 bench
+spots a day projected about +5,000 points over the season, more than the gap between first and
+seventh. Players in your own pending waiver claims or trade offers are never suggested as drops.
 
 Pickup, streamer and trade suggestions never create a balance problem you don't already have
 (e.g. a 4th PG, or leaving you with 1 C). They also never touch players in a trade that's
