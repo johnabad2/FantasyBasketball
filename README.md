@@ -5,8 +5,10 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 
 ## Setup
 
-1. Set up Python: `python -m venv .venv`, then `.venv\Scripts\pip install -r config\requirements.txt`.
-   Copy `config\config.example.json` to `config\config.json`.
+1. Install Python 3.11+ from python.org (tick "Add python.exe to PATH"), then double-click
+   **`Setup.bat`**. It installs what the app needs and makes `config\config.json` for you. (By hand:
+   `python -m venv .venv`, `.venv\Scripts\pip install -r config\requirements.txt`, and copy
+   `config\config.example.json` to `config\config.json`.)
 2. **league_id**: the number after `leagueId=` in your ESPN league URL.
 3. **year**: `2027` for the 2026-27 season (ESPN names a season by the year it ends).
 4. **espn_s2 / swid** (private leagues only): on espn.com, logged in, open DevTools (F12) →
@@ -17,6 +19,7 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 ## Folder layout
 
 ```
+Setup.bat           double-click once on a new PC
 Fantasy Hoops.bat   double-click to open the app
 app/                all the Python code (webapp.py + web/ = the app, loader.py = loading from ESPN,
                     fantasy.py = commands + alerts)
