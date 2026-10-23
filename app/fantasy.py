@@ -22,7 +22,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import stats
-from stats import owner_names, table
+from stats import owner_names, split_of, table
 
 ROOT = Path(__file__).resolve().parent.parent  # project folder (this file is in app/)
 CONFIG = ROOT / "config" / "config.json"
@@ -38,6 +38,9 @@ MIN_AT_POSITION, MAX_AT_POSITION = 2, 3  # aim for 2-3 players at each main posi
 PRIOR_GAMES = 20    # ESPN's projection counts like this many games against a player's own (shrinkage)
 MINUTES_PRIOR = 8   # projected minutes count like this many games; last week's games count double
 RECENT_PRIOR = 5    # a hot/cold stretch is shrunk toward the baseline like this many games
+MARKET_GAMES = 5    # buy-low / sell-high: games before a player's season average means anything to his manager
+MARKET_GAP = 0.15   # season average this far off ESPN's projection (either way)
+MARKET_EDGE = 4.0   # and at least this many points a game between what his manager sees and his real value
 NO_PROJECTION_VALUE = 18.0  # what a player ESPN doesn't even project is assumed to be worth, until proven
 
 DEFAULT_THRESHOLDS = {
@@ -490,6 +493,54 @@ def trade_ideas(mine, others, t, per_team=1, leaving=()):
     return sorted(ideas, key=lambda x: -x[1])
 
 
+def market_read(form, year):
+    """How a player's manager probably sees him vs what he's really worth. Managers judge by the season
+    average; early on, scoring per minute is mostly luck (shooting streaks) and drifts back, while
+    minutes reflect a real role. So a player whose minutes are intact but who is scoring well under
+    his projection is a buy-low (worth more than he looks), and one scoring well over it on the same
+    minutes is a sell-high. More minutes than projected = a real role change: neither.
+    Returns ("buy" | "sell", season average, real value) or None."""
+    p = form.player
+    season, proj = split_of(p, year, "total"), split_of(p, year, "projected")
+    if form.games < MARKET_GAMES or not split_value(proj):
+        return None
+    avg, projected = split_value(season), split_value(proj)
+    s_min, p_min = _avg(season, "MPG") or _avg(season, "MIN"), _avg(proj, "MPG") or _avg(proj, "MIN")
+    if not (s_min and p_min):
+        return None
+    if avg <= projected * (1 - MARKET_GAP) and s_min >= 0.95 * p_min and form.baseline - avg >= MARKET_EDGE:
+        return "buy", avg, form.baseline
+    if avg >= projected * (1 + MARKET_GAP) and s_min <= 1.05 * p_min and avg - form.baseline >= MARKET_EDGE:
+        return "sell", avg, form.baseline
+    return None
+
+
+def market_alerts(mine, others, year, leaving=(), limit=3):
+    """Sell-high players on your team and buy-low targets on others' (market_read)."""
+    out = []
+    for f in mine:
+        m = market_read(f, year)
+        if m and m[0] == "sell" and f.player.playerId not in leaving:
+            out.append(Alert(f"sell:{f.player.playerId}", 2,
+                             f"Sell high: {f.player.name} is averaging {m[1]:.1f}, likely more like {m[2]:.1f}",
+                             f"He's playing his usual minutes, so the jump is efficiency (often hot shooting), which "
+                             f"usually cools off. His manager-facing number is high right now: shop him for someone "
+                             f"worth {m[1]:.0f}+ for real (check it in Trade Lab)."))
+    buys = []
+    for team, forms in others:
+        for f in forms:
+            m = market_read(f, year)
+            if m and m[0] == "buy" and f.healthy:
+                buys.append((m[2] - m[1], team, f, m))
+    for gap, team, f, m in sorted(buys, key=lambda b: -b[0])[:limit]:
+        out.append(Alert(f"buy:{f.player.playerId}", 2,
+                         f"Buy low: {f.player.name} ({team.team_name.strip()}) is averaging {m[1]:.1f}, really more like {m[2]:.1f}",
+                         f"He's still getting his minutes, so the slump is efficiency (often cold shooting), which "
+                         f"usually bounces back. His manager may sell at his current average: try Trade Lab with "
+                         f"{team.team_name.strip()}."))
+    return out
+
+
 def trade_alerts(mine, others, t, leaving=()):
     ideas = trade_ideas(mine, others, t, leaving=leaving)
     return [
@@ -636,6 +687,7 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries)
                    + daily_stream_alerts(league, my_team, fas, injuries))
     alerts += trade_alerts(mine, others, thresholds, leaving)
+    alerts += market_alerts(mine, others, league.year, leaving)
     return sorted(alerts, key=lambda a: a.priority)
 
 

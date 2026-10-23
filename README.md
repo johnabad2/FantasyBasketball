@@ -206,6 +206,7 @@ The alerts:
 | Pick up / drop (consider) | A free agent beats one of your weakest players by 10%+ per game AND is expected to score more over the next 30 days AND gains 40+ rest-of-season lineup points (a drop is permanent) |
 | Opportunity | A free agent's teammate is out (or his minutes are up) and at his boosted value he beats one of your players |
 | Minutes down | One of your players is playing 5+ fewer minutes a game this week than usual (often a smaller role) |
+| Buy low / Sell high | After 5 games: a player's season average is 15%+ off ESPN's projection while his minutes are normal, and 4+ points a game off what the app thinks he's really worth. A slump or spike on normal minutes is usually shooting luck that evens out, but his manager sees the average. More minutes than projected is a real role change, so it doesn't count |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Roster balance | You have more than 3 or fewer than 2 players at a main position (e.g. 4 PGs, or 1 C). IR players count toward "too many" but not "too few" |
 
