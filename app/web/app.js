@@ -73,15 +73,7 @@ function render() {
   }
   ({ "standings": renderStandings, "my-team": renderMyTeam, "week": renderWeek, "schedule": renderSchedule,
      "free-agents": renderFreeAgents, "trade-lab": renderTradeLab, "league": renderLeague, "player": renderPlayer,
-     "compare": renderCompare, "news": renderNews, "activity": renderActivity }[tab] || renderSoon)(view, tab);
-}
-
-function renderSoon(view, tab) {
-  const name = TABS.find(([id]) => id === tab)[1];
-  view.innerHTML = `<div class="card empty"><h2>${esc(name)}</h2>
-    <p>This tab hasn't moved to the new look yet. It still works in the original window.</p>
-    <button class="btn primary" id="classic">Open the original window</button></div>`;
-  $("#classic").onclick = (e) => { e.target.disabled = true; e.target.textContent = "Opening…"; post("/api/classic"); };
+     "compare": renderCompare, "news": renderNews, "activity": renderActivity }[tab])(view, tab);
 }
 
 // ------------------------------------------------------------------ tables

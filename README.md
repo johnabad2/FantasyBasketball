@@ -17,10 +17,9 @@ free agents, sell players on hot streaks, and trade for slumping stars on your f
 ## Folder layout
 
 ```
-Fantasy Hoops.bat   double-click to open the window
-Fantasy Hoops (new).bat   double-click to open the new-look app
-app/                all the Python code (main.py = the window, webapp.py + web/ = the new-look app,
-                    loader.py = loading from ESPN for both, fantasy.py = commands + alerts)
+Fantasy Hoops.bat   double-click to open the app
+app/                all the Python code (webapp.py + web/ = the app, loader.py = loading from ESPN,
+                    fantasy.py = commands + alerts)
 config/             config.json (your ESPN cookies, never committed), nicknames.json, requirements
 scripts/            check.ps1, run by the scheduled task
 data/               exports, history, cached photos, check log (stays on your PC)
@@ -29,23 +28,18 @@ data/               exports, history, cached photos, check log (stays on your PC
 Keep `app/`, `config/` and `scripts/` where they are relative to each other; the code finds
 its config and data from its own location.
 
-## The new-look app
+## The app
 
-A modern web-style version of the window that opens in its own window. Double-click
-**`Fantasy Hoops (new).bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use your
-web browser instead, `--demo` for the made-up league). Every tab below is there, in a compact dark
-design: sortable tables (click a header), player photos, hoverable charts, and player names you can
-click anywhere to open that player's page. Trade Lab, Player, Compare, League and News work as you
-click; Trade partners open straight into Trade Lab.
+Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use
+your web browser instead, `--demo` for the made-up league). It opens in its own window, in a compact
+dark design: sortable tables (click a header), player photos, hoverable charts, and player names you
+can click anywhere to open that player's page.
 
 Under the hood a small local server (`app\webapp.py`, only reachable from this PC) loads the league
-with the same code as the original window (`app\loader.py`) and hands the page its data as JSON
-(`appiews.py`, `appiews_more.py`); the page is plain HTML/CSS/JavaScript in `app\web\` with
-ECharts for the charts. The original window (`Fantasy Hoops.bat`) still works too.
+(`app\loader.py`) and hands the page its data as JSON (`app\views.py`, `app\views_more.py`); the page is
+plain HTML/CSS/JavaScript in `app\web\` with ECharts for the charts.
 
-## The window
-
-Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\pythonw app\main.py`). Tabs:
+Tabs:
 
 - **Standings** (points update live while games are on, ranked automatically, with a live **today** column; below it a week-by-week rank chart with your team highlighted - hover a week for that week's table), **My Team** (alerts + roster form). The roster shows whether each player is
   **in your lineup or on your bench**, **their NBA game today** (your local time), and their

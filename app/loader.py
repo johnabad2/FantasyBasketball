@@ -1,5 +1,5 @@
-"""Loading everything the app shows from ESPN in one go, plus small display helpers. Shared by the
-desktop window (main.py) and the web app (webapp.py), so both always show the same numbers."""
+"""Loading everything the app shows from ESPN in one go, plus small display helpers for the web app
+(webapp.py)."""
 import chat
 import fantasy
 import feed

@@ -3,20 +3,8 @@
 Lineup strength = per-game value (the same 'base' the alerts use) of a team's best players,
 as many as it has active lineup slots. That's what scores in a points league; the bench
 mostly doesn't. Rest-of-season impact = change in lineup strength x games left."""
-import tkinter as tk
-
-from theme import C, GLOW, blend
-
 from fantasy import form_of
 
-SURFACE = C["chart_surface"]
-INK = C["chart_ink"]
-INK_2 = C["chart_ink2"]
-MUTED = C["chart_muted"]
-GRID = C["chart_grid"]
-OTHER = C["chart_other"]   # uninvolved teams recede
-SERIES = C["series"]  # team A blue, team B orange (categorical slots 1, 2)
-FONT = "Segoe UI"
 POSITIONS = ["PG", "SG", "SF", "PF", "C"]
 
 
@@ -164,65 +152,6 @@ def verdict(result):
                 "Worth offering.")
     return (f"Lopsided: you gain {a['delta']:+.1f} fp/g but they lose {-b['delta']:.1f}. "
             "Unlikely to accept as is. Try adding a sweetener.")
-
-
-class StrengthChart(tk.Canvas):
-    """Every team's lineup strength as a dot plot: hollow dot = before, filled = after, arrow
-    between them. Dots (not bars) because the axis is zoomed in, and bars must start at zero.
-    The two trading teams are colored; the rest recede to gray."""
-
-    def __init__(self, parent, **kw):
-        super().__init__(parent, background=SURFACE, highlightthickness=1, highlightbackground=C["chart_border"], **kw)
-        self.result = None
-        self.bind("<Configure>", lambda e: self.draw())
-
-    def show(self, result):
-        self.result = result
-        self.draw()
-
-    def draw(self):
-        self.delete("all")
-        w, h = self.winfo_width(), self.winfo_height()
-        r = self.result
-        if not r or w < 160 or h < 60:
-            return
-        sides = {r["a"]["team"].team_id: 0, r["b"]["team"].team_id: 1}
-        order = sorted(r["after"], key=lambda tid: -r["after"][tid])
-        self.create_text(14, 14, text="Lineup strength (fp/g of starters)",
-                         anchor="w", fill=INK, font=(FONT, 11, "bold"))
-        self.create_text(w - 14, 14, text="o before   ● after", anchor="e", fill=INK_2, font=(FONT, 9))
-        top = 34
-        row_h = max(min((h - top - 26) / max(len(order), 1), 30), 14)
-        label_w, value_w = 220, 150
-        x0, x1 = 14 + label_w, w - value_w
-        vals = list(r["after"].values()) + list(r["before"].values())
-        lo, hi = min(vals), max(vals)
-        pad = (hi - lo) * 0.08 or 1
-        lo, hi = lo - pad, hi + pad
-        x = lambda v: x0 + (v - lo) / (hi - lo) * (x1 - x0)
-        for i, tid in enumerate(order):
-            y = top + (i + 0.5) * row_h
-            involved = tid in sides
-            color = SERIES[sides[tid]] if involved else OTHER
-            self.create_line(x0, y, x1, y, fill=GRID)
-            self.create_text(14, y, text=f"{i + 1}. {r['names'][tid]}", anchor="w",
-                             fill=INK if involved else INK_2, font=(FONT, 9, "bold" if involved else "normal"))
-            b, a = x(r["before"][tid]), x(r["after"][tid])
-            if involved and abs(a - b) > 1:
-                self.create_line(b, y, a, y, fill=color, width=2, arrow="last", arrowshape=(8, 9, 3))
-            if involved:
-                self.create_oval(b - 5, y - 5, b + 5, y + 5, outline=color, width=2, fill=SURFACE)
-            if involved and GLOW:  # the two trading teams glow softly
-                for grow, fade in ((9, .86), (7, .7)):
-                    self.create_oval(a - grow, y - grow, a + grow, y + grow, outline="",
-                                     fill=blend(color, SURFACE, fade))
-            self.create_oval(a - 5, y - 5, a + 5, y + 5, fill=color, outline=SURFACE, width=2)
-            d = r["after"][tid] - r["before"][tid]
-            label = f"{r['after'][tid]:.1f}" + (f"  ({d:+.1f})" if involved else "")
-            self.create_text(x1 + 12, y, text=label, anchor="w", fill=INK if involved else MUTED,
-                             font=(FONT, 9, "bold" if involved else "normal"))
-        self.create_text(x0, h - 9, text=f"axis zoomed in: {lo:.0f}-{hi:.0f} fp/g",
-                         anchor="w", fill=MUTED, font=(FONT, 8))
 
 
 def partners(league, my_team, keep=(), per_team=2, limit=12):

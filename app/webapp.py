@@ -1,5 +1,4 @@
-"""Fantasy Hoops as a web app in its own window (the new look). Still being built tab by tab; the
-desktop window (main.py) keeps working meanwhile.
+"""Fantasy Hoops: a web app in its own window.
 
     .venv\\Scripts\\python app\\webapp.py            its own window
     .venv\\Scripts\\python app\\webapp.py --browser  in your web browser instead
@@ -144,14 +143,6 @@ def handler_for(state):
             if self.path == "/api/trade" and state.data:
                 return self._send(_json(views_more.trade_lab(state.data, body.get("a"), body.get("b"),
                                                              body.get("send") or [], body.get("get") or [])))
-            if self.path == "/api/classic":  # open the original window for tabs not moved over yet
-                import subprocess
-                import sys
-                exe = Path(sys.executable)
-                pythonw = exe.with_name("pythonw.exe")
-                subprocess.Popen([str(pythonw if pythonw.exists() else exe), str(Path(__file__).with_name("main.py"))]
-                                 + (["--demo"] if state.demo else []))
-                return self._send(_json({"ok": True}))
             if self.path == "/api/keep" and state.data:
                 player = next((p for p in state.data["me"].roster if p.playerId == body.get("id")), None)
                 if player:
