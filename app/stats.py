@@ -83,7 +83,8 @@ def live_points(league, scores=None):
 
 def weekly_standings(league, scores=None):
     """[{week, start, end, totals: {team id: points by the end of that week}, gained: {team id:
-    points that week}, ranks: {team id: 1 = first}}], one per week so far (Monday to Sunday; the
+    points that week}, ranks: {team id: 1 = first, ties share a rank}, rows: {team id: chart row, ties
+    split}}], one per week so far (Monday to Sunday; the
     current week counts up to now)."""
     from datetime import timedelta
     scores = scores or season_scores(league)
@@ -102,8 +103,11 @@ def weekly_standings(league, scores=None):
         running = {tid: running[tid] + gained[tid] for tid in scores}
         order = sorted(scores, key=lambda tid: -running[tid])
         ranks = {tid: 1 + sum(running[o] > running[tid] for o in order) for tid in order}  # ties share a rank
+        # chart rows: ties split (more gained that week first, then a stable order) so no two teams overlap
+        order = sorted(scores, key=lambda tid: (-running[tid], -gained[tid], tid))
+        rows = {tid: i for i, tid in enumerate(order, 1)}
         out.append({"week": n, "start": max(monday, first_day), "end": min(monday + timedelta(days=6), date.today()),
-                    "totals": dict(running), "gained": gained, "ranks": ranks})
+                    "totals": dict(running), "gained": gained, "ranks": ranks, "rows": rows})
     return out
 
 

@@ -182,9 +182,10 @@ function rankChart(el, s) {
       trigger: "axis", backgroundColor: "#1a2230", borderColor: "#2c3747", textStyle: { color: "#e8edf4" },
       formatter: (items) => {
         const w = s.weeks[items[0].dataIndex];
-        const order = Object.keys(w.ranks).sort((a, b) => w.ranks[a] - w.ranks[b]);
+        const order = Object.keys(w.rows).sort((a, b) => w.rows[a] - w.rows[b]);
+        const tied = (n) => Object.values(w.ranks).filter((r) => r === w.ranks[n]).length > 1;
         return `<b>Week ${w.week}</b> <span style="color:${MUTED}">${w.start} – ${w.end}</span><br>` + order.map((n) =>
-          `<span style="color:${n === s.me ? ME : "#c4cdd9"};${n === s.me ? "font-weight:700" : ""}">${w.ranks[n]}. ${esc(n)}
+          `<span style="color:${n === s.me ? ME : "#c4cdd9"};${n === s.me ? "font-weight:700" : ""}">${tied(n) ? "T-" : ""}${w.ranks[n]}. ${esc(n)}
            — ${num(w.totals[n])} <span style="color:${MUTED}">(+${num(w.gained[n])})</span></span>`).join("<br>");
       },
     },
@@ -195,7 +196,7 @@ function rankChart(el, s) {
     series: names.map((n) => {
       const me = n === s.me;
       return {
-        name: n, type: "line", smooth: true, data: s.weeks.map((w) => w.ranks[n]), symbolSize: me ? 11 : 7, z: me ? 10 : 1,
+        name: n, type: "line", smooth: true, data: s.weeks.map((w) => w.rows[n]), symbolSize: me ? 11 : 7, z: me ? 10 : 1,
         lineStyle: { width: me ? 4 : 2, color: me ? ME : OTHER, shadowBlur: me ? 14 : 0, shadowColor: ME },
         itemStyle: { color: me ? ME : OTHER }, emphasis: { focus: "series" },
         endLabel: { show: true, formatter: n, color: me ? "#fff" : MUTED, fontWeight: me ? "bold" : "normal" },  // places are on the left axis

@@ -30,7 +30,8 @@ def standings(d):
     weeks = [{"week": w["week"], "start": w["start"].isoformat(), "end": w["end"].isoformat(),
               "totals": {names[k]: round(v, 1) for k, v in w["totals"].items()},
               "gained": {names[k]: round(v, 1) for k, v in w["gained"].items()},
-              "ranks": {names[k]: v for k, v in w["ranks"].items()}} for w in d.get("weekly") or []]
+              "ranks": {names[k]: v for k, v in w["ranks"].items()},
+              "rows": {names[k]: v for k, v in w["rows"].items()}} for w in d.get("weekly") or []]
     return {"teams": rows, "weeks": weeks, "me": names[me.team_id]}
 
 
