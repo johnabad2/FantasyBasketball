@@ -15,6 +15,7 @@ LONG_TERM_SLACK = 0.0  # never drop someone better per game than the streamer (f
 STREAM_SLACK = 1.0     # daily streaming: only drop players at most this much better (fp/g) than the best free agent
 STREAM_MIN = 8.0       # daily streaming: smallest gain (points that day) worth a move
 STREAM_MAX = 3         # daily streaming: most moves suggested per day
+STREAM_RISKY = {"DAY_TO_DAY", "QUESTIONABLE", "DOUBTFUL"}  # might sit tonight: not worth a one-night pickup
 
 
 def lineup_slots(league):
@@ -276,8 +277,9 @@ def daily_streams(league, team, free_agents, injuries):
     roster = [p for p in team.roster if p.lineupSlot != "IR"]
     values = {p.playerId: form_of(p, league.year).baseline for p in team.roster}
     on_waivers = waivers(league)
+    # a one-night stream has to actually play: skip anyone listed day-to-day or questionable
     pool = [f for f in free_agents if f.healthy and f.player.proTeam != "FA" and f.baseline > 0
-            and f.player.playerId not in on_waivers]
+            and f.player.playerId not in on_waivers and f.status not in STREAM_RISKY]
     if not pool:
         return None
     best_fa = max(f.baseline for f in pool)
