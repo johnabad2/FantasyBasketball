@@ -36,7 +36,9 @@ its config and data from its own location.
 Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\python app\webapp.py`; add `--browser` to use
 your web browser instead, `--demo` for the made-up league). It opens in its own window, in a compact
 dark design: sortable tables (click a header), player photos, hoverable charts, and player names you
-can click anywhere to open that player's page.
+can click anywhere to open that player's page. Long pages are split into sub-tabs (My Team: Alerts / Roster;
+Free Agents & Trades: Free agents / Streamers / Trade partners / Trade ideas; Trade Lab: This trade /
+Suggestions), and the app remembers which one you had open.
 
 Under the hood a small local server (`app\webapp.py`, only reachable from this PC) loads the league
 (`app\loader.py`) and hands the page its data as JSON (`app\views.py`, `app\views_more.py`); the page is

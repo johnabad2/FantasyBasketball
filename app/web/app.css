@@ -39,6 +39,18 @@ nav a:hover { color: var(--text); border-color: var(--line); }
 nav a.on { background: var(--me); color: #fff; font-weight: 600; box-shadow: 0 0 14px rgba(242,107,29,.45); }
 nav a.soon { opacity: .55; }
 
+/* sub-tabs: sections of one page, one at a time (so long pages don't need scrolling) */
+.subnav { display: flex; gap: 2px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.subnav button { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted);
+                 padding: 6px 14px; margin-bottom: -1px; font-size: 13px; }
+.subnav button:hover { color: var(--text); }
+.subnav button.on { color: var(--text); border-bottom-color: var(--me); font-weight: 600; }
+.subnav .count { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px;
+                 font-size: 11px; font-weight: 600; color: var(--text-2); margin-left: 4px; }
+.subnav .count:empty { display: none; }
+.pane { display: grid; gap: 12px; }
+.pane.hidden { display: none; }
+
 /* layout */
 main { padding: 0 20px 20px; display: grid; gap: 12px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }

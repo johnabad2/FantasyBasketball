@@ -163,6 +163,33 @@ function card(k, v, sub) {
   return `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="sub">${sub}</div></div>`;
 }
 
+// ------------------------------------------------------------------ sub-tabs (sections of a page, one at a time)
+
+const subTab = (() => { try { return JSON.parse(localStorage.getItem("subtabs") || "{}"); } catch (e) { return {}; } })();
+
+/** A row of sub-tabs plus its panes. panes: [[key, label, html]]; the open one is remembered per group. */
+function subtabs(group, panes) {
+  const open = panes.some(([k]) => k === subTab[group]) ? subTab[group] : panes[0][0];
+  return `<nav class="subnav" data-group="${group}">${panes.map(([k, label]) =>
+    `<button data-k="${k}" class="${k === open ? "on" : ""}">${label}</button>`).join("")}</nav>` +
+    panes.map(([k, , html]) => `<div class="pane ${k === open ? "" : "hidden"}" data-group="${group}" data-pane="${k}">${html}</div>`).join("");
+}
+
+/** Switch a group to one of its panes (also called by clicks on the sub-tab buttons). */
+function showSub(group, key) {
+  subTab[group] = key;
+  try { localStorage.setItem("subtabs", JSON.stringify(subTab)); } catch (e) { /* private window: just don't remember */ }
+  document.querySelectorAll(`.subnav[data-group="${group}"] button`).forEach((b) => b.classList.toggle("on", b.dataset.k === key));
+  document.querySelectorAll(`.pane[data-group="${group}"]`).forEach((p) => {
+    p.classList.toggle("hidden", p.dataset.pane !== key);
+    if (p.dataset.pane === key) p.querySelectorAll(".chart").forEach((el) => { const c = echarts.getInstanceByDom(el); if (c) c.resize(); });
+  });
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".subnav button");
+  if (b) showSub(b.closest(".subnav").dataset.group, b.dataset.k);
+});
+
 function rankChart(el, s) {
   if (!s.weeks.length) { el.innerHTML = `<div class="empty">No games played yet.</div>`; return; }
   const names = Object.keys(s.weeks[0].ranks).sort((a, b) => (a === s.me) - (b === s.me));  // yours drawn last (on top)
@@ -210,13 +237,17 @@ function renderMyTeam(view) {
     </section>
     ${m.pending.map((p) => `<div class="banner">Pending trade, already counted in plans and alerts:
       ${esc(p.out.join(", "))} → ${esc(p.in.join(", "))} (goes through ${esc(p.when)})</div>`).join("")}
-    <section class="card"><h2>Alerts</h2><div class="alerts">${m.alerts.length ? m.alerts.map((a) =>
-      `<div class="alert ${a.priority}"><div class="t"><span class="lab">${a.label}</span>${esc(a.title)}</div>
-       ${a.detail.map((l) => `<div class="d">${esc(l)}</div>`).join("")}</div>`).join("") :
-      `<div class="muted">Nothing to do right now.</div>`}</div></section>
-    <section class="card flush" id="roster"></section>
-    <div class="note">☆ keep = never suggested as a drop or trade bait · base = pts per game · L15 = last 15 days ·
-      NBA role = recent starts · minutes = usual (change over the last 7 days) · vs proj = beating or missing ESPN's projection</div>`;
+    ${subtabs("myteam", [
+      ["alerts", `Alerts <span class="count">${m.alerts.length}</span>`,
+       `<section class="card"><div class="alerts">${m.alerts.length ? m.alerts.map((a) =>
+        `<div class="alert ${a.priority}"><div class="t"><span class="lab">${a.label}</span>${esc(a.title)}</div>
+         ${a.detail.map((l) => `<div class="d">${esc(l)}</div>`).join("")}</div>`).join("") :
+        `<div class="muted">Nothing to do right now.</div>`}</div></section>`],
+      ["roster", `Roster <span class="count">${m.roster.length}</span>`,
+       `<section class="card flush" id="roster"></section>
+        <div class="note">☆ keep = never suggested as a drop or trade bait · base = pts per game · L15 = last 15 days ·
+          NBA role = recent starts · minutes = usual (change over the last 7 days) · vs proj = beating or missing ESPN's projection</div>`],
+    ])}`;
 
   const statusPill = (p) => `<span class="pill ${p.status_tag}">${esc(p.status)}</span>`;
   table($("#roster"), [

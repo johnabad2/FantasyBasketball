@@ -26,22 +26,21 @@ const statusPill = (status, tag) => `<span class="pill ${tag || ""}">${esc(statu
 
 function renderFreeAgents(view) {
   const f = state.fa;
-  view.innerHTML = `
-    <section class="split even">
-      <div class="card flush"><div class="pad"><h2>Free agents · ${f.upgrades} would upgrade your roster</h2>
-        <div class="sub">worth = pts per game · green = better than one of yours, per game and over 30 days</div></div>
-        <div id="fa-table" class="tall"></div></div>
-      <div class="stack">
-        <div class="card flush"><div class="pad"><h2>Trade ideas</h2>
-          <div class="sub">Better players whose recent form makes the swap look fair to them.</div></div><div id="fa-ideas"></div></div>
-        <div class="card flush"><div class="pad"><h2>Trade partners</h2>
-          <div class="sub">Fair swaps that fix a position imbalance (2–3 per position). Click one to open it in Trade Lab.</div></div>
-          <div id="fa-partners"></div></div>
-        <div class="card flush"><div class="pad"><h2>Streamers: best pickups for the next 7 days</h2>
-          <div class="sub">Only drops that also win over the rest of the season · light = games on days you have empty slots</div></div>
-          <div id="fa-streams"></div></div>
-      </div>
-    </section>`;
+  const streams = (state.week && state.week.streamers) || [];
+  view.innerHTML = subtabs("fa", [
+    ["free", `Free agents <span class="count">${f.upgrades} upgrades</span>`,
+     `<div class="card flush"><div class="pad"><div class="sub">worth = pts per game · green = better than one of yours,
+        per game and over 30 days</div></div><div id="fa-table" class="tall"></div></div>`],
+    ["streams", `Streamers <span class="count">${streams.length}</span>`,
+     `<div class="card flush"><div class="pad"><div class="sub">Best pickups for the next 7 days · only drops that also win over
+        the rest of the season · light = games on days you have empty slots</div></div><div id="fa-streams" class="tall"></div></div>`],
+    ["partners", `Trade partners <span class="count">${f.partners.length}</span>`,
+     `<div class="card flush"><div class="pad"><div class="sub">Fair swaps that fix a position imbalance (2–3 per position).
+        Click one to open it in Trade Lab.</div></div><div id="fa-partners" class="tall"></div></div>`],
+    ["ideas", `Trade ideas <span class="count">${f.ideas.length}</span>`,
+     `<div class="card flush"><div class="pad"><div class="sub">Better players whose recent form makes the swap look fair to them.</div></div>
+        <div id="fa-ideas" class="tall"></div></div>`],
+  ]);
   table($("#fa-table"), [
     { key: "name", label: "Player", num: false, html: (p) => facedLink(p.id, p.name, p.nba) },
     posCol,
@@ -79,7 +78,7 @@ function renderFreeAgents(view) {
   } else {
     $("#fa-partners").innerHTML = `<div class="empty small">No fair fixes found right now.</div>`;
   }
-  renderStreamers($("#fa-streams"), state.week && state.week.streamers);
+  renderStreamers($("#fa-streams"), streams);
 }
 
 // ------------------------------------------------------------------ Trade Lab
@@ -106,15 +105,19 @@ function renderTradeLab(view) {
       <div class="card flush"><div class="pad side-a"><h2 id="lab-a-head"></h2></div><div id="lab-a-list"></div></div>
       <div class="card flush"><div class="pad side-b"><h2 id="lab-b-head"></h2></div><div id="lab-b-list"></div></div>
     </section>
-    <section class="split three">
-      <div class="card" id="lab-summary"><div class="muted">Working it out…</div></div>
-      <div class="card flush"><div class="pad"><h2 id="lab-sugg-head">Suggestions</h2><div class="sub">Season = rest-of-season lineup points beyond what you could get
+    ${subtabs("lab", [
+      ["result", "This trade",
+       `<section class="split even">
+          <div class="card" id="lab-summary"><div class="muted">Working it out…</div></div>
+          <div class="card"><h2>Lineup strength</h2><div class="sub">fp/g of each team's starters · ○ before ● after</div>
+            <div class="chart mid" id="lab-chart"></div></div>
+        </section>`],
+      ["sugg", `Suggestions <span class="count" id="lab-sugg-count"></span>`,
+       `<div class="card flush"><div class="pad"><h2 id="lab-sugg-head">Suggestions</h2><div class="sub">Season = rest-of-season lineup points beyond what you could get
           free off waivers. Fair to them = it looks fair on ESPN's projections (what they see).
           <span class="plus-key">Highlighted</span> = a real gain for you that they'd likely accept. Click one to load it.</div></div>
-        <div id="lab-sugg"></div></div>
-      <div class="card"><h2>Lineup strength</h2><div class="sub">fp/g of each team's starters · ○ before ● after</div>
-        <div class="chart mid" id="lab-chart"></div></div>
-    </section>`;
+        <div id="lab-sugg" class="tall"></div></div>`],
+    ])}`;
   $("#lab-a").onchange = () => { lab.a = Number($("#lab-a").value); if (lab.a === lab.b) lab.b = rosters.find((t) => t.id !== lab.a).id; lab.send = []; lab.get = []; renderTradeLab(view); };
   $("#lab-b").onchange = () => { lab.b = Number($("#lab-b").value); lab.get = []; if (lab.a === lab.b) { lab.a = rosters.find((t) => t.id !== lab.b).id; lab.send = []; } renderTradeLab(view); };
   $("#lab-clear").onclick = () => { lab.send = []; lab.get = []; renderTradeLab(view); };
@@ -164,6 +167,7 @@ async function runTrade() {
     ${s.roster[0] !== s.roster[1] ? `<div class="muted">Roster ${s.roster[0]} → ${s.roster[1]}${s.drop ? `: would need to drop someone (lowest: ${esc(s.drop)})` : ""}</div>` : ""}</div>`;
   $("#lab-summary").innerHTML = `<div class="verdict">${esc(r.verdict)}</div>${side(r.sides[0], "side-a")}${side(r.sides[1], "side-b")}`;
   $("#lab-sugg-head").textContent = r.suggest_title;
+  $("#lab-sugg-count").textContent = r.suggestions.length || "";
   const short = (names) => names.map((n) => n.split(" ").length > 1 ? `${n[0]}. ${n.split(" ").slice(1).join(" ")}` : n).join(", ");
   if (r.suggestions.length) {
     table($("#lab-sugg"), [
@@ -178,6 +182,7 @@ async function runTrade() {
     $("#lab-sugg").querySelectorAll("tbody tr").forEach((tr) => tr.onclick = () => {
       const o = r.suggestions[tr.dataset.i];
       lab.send = o.send; lab.get = o.get; drawLabLists(); runTrade();
+      showSub("lab", "result");  // loading a suggestion: show what it does
     });
   } else {
     $("#lab-sugg").innerHTML = `<div class="empty small">No trade changes either lineup.</div>`;
