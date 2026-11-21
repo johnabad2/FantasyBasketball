@@ -245,6 +245,7 @@ Each game is also adjusted for things that change how much a player scores that 
 | Factor | Effect | Why |
 |---|---|---|
 | Opponent | Up to ±10% for pace and defence | More possessions mean more of every stat; weak defences give up more points |
+| Defence vs position | Up to ±6% | Some teams are weak against guards, forwards or centres in particular. Worked out from this season's ESPN box scores (fantasy points per minute each team allows to G / F / C, in your league's scoring), counting only the tilt beyond the team's overall defence, and shrunk toward none early in the season (`app\defense.py`, cached in `data\`) |
 | Back-to-back, second night | −3% | Teams shoot worse and play slower on no rest, and that's when stars and veterans get rested |
 | Blowout risk | −1% for each point the expected margin is past 8, at most −6% | Starters sit 4th quarters in lopsided games. The margin comes from each team's scoring margin, with last season's counted at 60% because teams regress |
 | Last 2 weeks of the season | −5%, or −15% for teams winning under 40% | Teams rest players late, and losing teams shut them down |

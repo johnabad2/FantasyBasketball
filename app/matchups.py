@@ -166,9 +166,12 @@ def schedule_factor(league, table, game, team_id):
     return f
 
 
-def game_factor(league, game, team_id):
-    """Everything about this game that moves a player's value: opponent x schedule."""
+def game_factor(league, game, team_id, pos=None):
+    """Everything about this game that moves a player's value: opponent x schedule, and (with pos =
+    G / F / C) how that opponent defends his position (defense.py)."""
     if not game:
         return 1.0
+    import defense
     table = for_league(league)
-    return factor(table, opponent(game, team_id)) * schedule_factor(league, table, game, team_id)
+    opp = opponent(game, team_id)
+    return factor(table, opp) * schedule_factor(league, table, game, team_id) * defense.factor(league, opp, pos)
