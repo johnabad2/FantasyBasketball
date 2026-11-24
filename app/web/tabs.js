@@ -350,7 +350,46 @@ function drawGames(p) {
 
 // ------------------------------------------------------------------ Compare
 
-let compareQ = ["", ""], compareSplit = "", compareMode = "fantasy";
+let compareQ = ["", ""], compareSplit = "", compareMode = "fantasy", compareStat = "FP", compareRange = "all";
+const CMP_STATS = ["FP", "PTS", "REB", "AST", "STL", "BLK", "3PM", "TO", "MIN"];
+
+/** Both players' games on one date axis, each with a dashed line at his average (like the Player tab). */
+function drawCompareGames(r, colors) {
+  const el = $("#c-games");
+  if (r.players.every((p) => !p.games || !p.games.length)) { el.innerHTML = `<div class="empty">No game logs to chart.</div>`; return; }
+  const day = (iso, long) => new Date(iso).toLocaleDateString(undefined, long ? { weekday: "short", day: "numeric", month: "short" }
+                                                                         : { day: "numeric", month: "short" });
+  const label = compareStat === "FP" ? "Fantasy points" : compareStat;
+  const series = [];
+  r.players.forEach((p, i) => {
+    const all = p.games || [];
+    const games = compareRange === "all" ? all : all.slice(-Number(compareRange));
+    if (!games.length) return;
+    const avg = games.reduce((a, g) => a + (g[compareStat] ?? 0), 0) / games.length;
+    series.push({ name: p.name, type: "line", smooth: 0.3, symbol: i ? "rect" : "circle", symbolSize: 9,
+      data: games.map((g) => ({ value: [g.date, g[compareStat] ?? 0], g })),
+      lineStyle: { width: 2.5, color: colors[i] }, itemStyle: { color: colors[i], borderColor: "#131a25", borderWidth: 1 },
+      markLine: { symbol: "none", silent: true, data: [{ yAxis: avg }], lineStyle: { color: colors[i], type: "dashed", opacity: 0.8 },
+                  label: { formatter: `${p.name.split(" ").slice(-1)[0]} avg ${num(avg)}`, color: colors[i], position: "insideEndTop" } } });
+  });
+  let chart = echarts.getInstanceByDom(el);
+  if (!chart) { el.innerHTML = ""; chart = echarts.init(el); charts.push(chart); }
+  chart.setOption({
+    grid: { left: 40, right: 20, top: 40, bottom: 40 },
+    title: { text: `${label} per game`, left: 0, top: 0, textStyle: { color: "#e8edf4", fontSize: 13 } },
+    legend: { top: 0, right: 0, textStyle: { color: "#c4cdd9" } },
+    tooltip: { ...tipStyle, trigger: "item", formatter: (x) => {
+      const g = x.data.g;
+      return `<b style="color:${x.color}">${esc(x.seriesName)}</b><br>${esc(day(g.date, true))} · ${esc(g.opp)} · ${esc(g.result)}<br>
+        ${num(g[compareStat])} ${compareStat === "FP" ? "fantasy pts" : compareStat}<br>
+        <span style="color:${MUTED}">${num(g.PTS, 0)} pts ${num(g.REB, 0)} reb ${num(g.AST, 0)} ast ${num(g.STL, 0)} stl ${num(g.BLK, 0)} blk ${num(g.TO, 0)} to · ${num(g.MIN, 0)} min</span>`;
+    } },
+    xAxis: { type: "time", axisLabel: { color: MUTED, fontSize: 10, formatter: (v) => day(v) }, axisLine: { lineStyle: { color: "#243044" } },
+             splitLine: { show: false } },
+    yAxis: { type: "value", axisLabel: { color: MUTED }, splitLine: { lineStyle: { color: GRID } } },
+    series,
+  }, true);
+}
 
 async function renderCompare(view) {
   view.innerHTML = `
@@ -385,7 +424,18 @@ async function renderCompare(view) {
         <div class="sub">each axis spans every rostered player in your league · higher is always better</div>
         <div class="chart" id="c-chart"></div></div>
       <div class="card flush"><div class="pad"><h2>Side by side</h2><div class="sub">edge = extra fantasy pts per game</div></div><div id="c-table"></div></div>
-    </section>`;
+    </section>
+    <section class="card"><div class="row-between"><div id="c-stats" class="chips"></div>
+        <select id="c-range"><option value="all">All games</option><option value="10">Last 10</option><option value="20">Last 20</option></select></div>
+      <div class="chart" id="c-games"></div></section>`;
+  const drawCmpStats = () => {
+    $("#c-stats").innerHTML = CMP_STATS.map((s) => `<button class="chip ${s === compareStat ? "on" : ""}" data-s="${s}">${s === "FP" ? "Fantasy pts" : s}</button>`).join("");
+    $("#c-stats").querySelectorAll(".chip").forEach((b) => b.onclick = () => { compareStat = b.dataset.s; drawCmpStats(); drawCompareGames(r, colors); });
+  };
+  $("#c-range").value = compareRange;
+  $("#c-range").onchange = () => { compareRange = $("#c-range").value; drawCompareGames(r, colors); };
+  drawCmpStats();
+  drawCompareGames(r, colors);
   const last = (n) => n.split(" ").slice(-1)[0];
   table($("#c-table"), [
     { key: "label", label: "Stat", num: false }, { key: "a", label: last(r.players[0].name), num: true, html: (x) => num(x.a) },

@@ -148,6 +148,15 @@ def compare(d, a, b, split=None, mode="fantasy"):
         vals = [v.get(key, 0) for v in pool]
         lo, hi = min(vals), max(vals)
         ranges[key] = [lo, hi if hi > lo else lo + 1]
+    logs = [None, None]  # game by game, for the per-game chart (same data as the Player tab)
+    if not d.get("demo"):
+        import gamelog
+        from concurrent.futures import ThreadPoolExecutor
+        try:
+            with ThreadPoolExecutor(2) as pool:
+                logs = list(pool.map(lambda pt: gamelog.latest_games(pt[0].playerId, year, rules)[0], found))
+        except OSError:
+            pass
     rows = []
     for key, label in axes:
         x, y = players[0].get(key, 0), players[1].get(key, 0)
@@ -158,8 +167,8 @@ def compare(d, a, b, split=None, mode="fantasy"):
             "inverted": ["TO"] if mode == "raw" else [],
             "players": [{"id": p.playerId, "name": p.name, "pos": p.position, "nba": p.proTeam, "status": status_text(p),
                          "owner": team.team_name.strip() if team else "free agent",
-                         "values": {k: round(v, 2) for k, v in prof.items()}}
-                        for (p, team), prof in zip(found, players)],
+                         "values": {k: round(v, 2) for k, v in prof.items()}, "games": log}
+                        for (p, team), prof, log in zip(found, players, logs)],
             "rows": rows}
 
 
