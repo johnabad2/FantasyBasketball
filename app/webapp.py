@@ -43,7 +43,8 @@ class State:
             data = loader.load(self.demo)
             # pages that don't change until the next refresh are built once here, not on every poll
             self.pages = {"header": views.header(data), "standings": views.standings(data),
-                          "week": views.week_ahead(data), "schedule": views.schedule_view(data),
+                          "week": views.week_ahead(data), "tonight": views.tonight_view(data),
+                          "schedule": views.schedule_view(data),
                           "fa": views_more.free_agents_trades(data), "teams": views_more.league_teams(data),
                           "news": views_more.news_view(data), "activity": views_more.activity_view(data),
                           "rosters": views_more.trade_rosters(data)}

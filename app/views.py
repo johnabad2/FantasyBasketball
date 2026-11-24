@@ -22,8 +22,13 @@ def standings(d):
     proj = d.get("projected") or {}
     proj_rank = {tid: r for r, tid in enumerate(sorted(proj, key=lambda k: -proj[k][2]), 1)}
     today = d.get("today_pts") or {}
+    race = d.get("race") or {}
+    lead7 = max((points(d, t) + race[t.team_id][0] for t in teams if t.team_id in race), default=None)
     rows = [{"id": t.team_id, "team": t.team_name.strip(), "owner": owner_names(t), "points": round(points(d, t), 1),
              "today": today.get(t.team_id), "behind": round(lead - points(d, t), 1),
+             "next7": round(race[t.team_id][0]) if t.team_id in race else None,
+             "games7": race[t.team_id][1] if t.team_id in race else None,
+             "behind7": round(lead7 - points(d, t) - race[t.team_id][0]) if t.team_id in race else None,
              "proj_final": round(proj[t.team_id][2]) if t.team_id in proj else None,
              "proj_rank": proj_rank.get(t.team_id), "me": t.team_id == me.team_id} for t in teams]
     names = {t.team_id: t.team_name.strip() for t in league.teams}
@@ -175,6 +180,39 @@ def week_ahead(d):
                           "room": room, "waivers": claim.strftime("%a %H:%M") if claim else None})
     return {"today": today_rows, "summary": summary, "days": days, "streamers": streamers,
             "empty": sum(x["slots"] - x["filled"] for x in days)}
+
+
+# ---------------------------------------------------------------- Tonight (one-night streams)
+
+def tonight_view(d):
+    """The best free agents for the next game day with the reasons behind each projection, and the
+    add/drop moves that would put them in empty lineup slots."""
+    import planner
+    from datetime import datetime
+    from matchups import EASTERN, opponent
+    from espn_api.basketball.constant import PRO_TEAM_MAP
+    league = d["league"]
+    if d.get("demo") or not getattr(league, "pro_schedule", None):
+        return {"demo": True}
+    t = planner.tonight(league, d["planned"], d.get("fas") or [], d.get("injuries") or {})
+    if not t:
+        return {"players": [], "moves": []}
+    players = []
+    for r in t["players"]:
+        f, g = r["form"], r["game"]
+        tid = projections.nba_team_id(f.player)
+        home = g["homeProTeamId"] == tid
+        start = datetime.fromtimestamp(g["date"] / 1000, EASTERN)
+        players.append({"id": f.player.playerId, "name": f.player.name, "nba": f.player.proTeam,
+                        "elig": positions(f.player), "base": round(f.baseline, 1), "recent": round(f.recent, 1),
+                        "min": f.minutes, "proj": round(r["proj"], 1),
+                        "game": f"{'vs' if home else '@'} {PRO_TEAM_MAP.get(opponent(g, tid), '?')}",
+                        "time": start.strftime("%I:%M %p").lstrip("0") + " ET",
+                        "edge": round((r["proj"] / f.baseline - 1) * 100) if f.baseline else 0,
+                        "why": r["why"]})
+    moves = [{"add": f.player.name, "add_id": f.player.playerId, "drop": drop.name, "gain": round(gain, 1)}
+             for f, drop, gain in t["moves"]]
+    return {"label": t["label"], "players": players, "moves": moves}
 
 
 # ---------------------------------------------------------------- Schedule

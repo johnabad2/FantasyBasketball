@@ -15,6 +15,7 @@ LONG_TERM_SLACK = 0.0  # never drop someone better per game than the streamer (f
 STREAM_SLACK = 1.0     # daily streaming: only drop players at most this much better (fp/g) than the best free agent
 STREAM_MIN = 8.0       # daily streaming: smallest gain (points that day) worth a move
 STREAM_MAX = 3         # daily streaming: most moves suggested per day
+STREAM_LIKE = 3     # free agents at least as good as a player before he's droppable for a one-night stream
 STREAM_RISKY = {"DAY_TO_DAY", "QUESTIONABLE", "DOUBTFUL"}  # might sit tonight: not worth a one-night pickup
 
 
@@ -103,9 +104,13 @@ def _game(league, player, day):
 
 def _matchup(league, player, game):
     """How much better (or worse) than usual this game is for him: the opponent's pace and defence,
-    how it defends his position, back-to-backs, blowout risk and end-of-season rest (matchups.game_factor)."""
+    how it defends his position, back-to-backs, blowout risk and end-of-season rest (matchups.game_factor),
+    and for today/tomorrow, regular teammates who are out (usage.py)."""
     import defense
-    return matchups.game_factor(league, game, nba_team_id(player), defense.bucket(player)) if game else 1.0
+    import usage
+    if not game:
+        return 1.0
+    return matchups.game_factor(league, game, nba_team_id(player), defense.bucket(player)) * usage.for_game(league, player, game)
 
 
 def _available(player, game, injuries):
@@ -283,13 +288,12 @@ def daily_streams(league, team, free_agents, injuries):
             and f.player.playerId not in on_waivers and f.status not in STREAM_RISKY]
     if not pool:
         return None
-    best_fa = max(f.baseline for f in pool)
+    # "no better than the free agents" = at least STREAM_LIKE of them are as good, so he (or someone like him)
+    # really can be picked up again later
+    best_fa = sorted((f.baseline for f in pool), reverse=True)[min(STREAM_LIKE, len(pool)) - 1]
     from fantasy import committed
     keep = load_keep() | feed.leaving(league, team.team_id) | committed(league, getattr(team, "_team", team))
-    day, label = today, "today"
-    if not any(g and g["date"] > now_ms for p in roster + [f.player for f in pool[:30]]
-               for g in [_game(league, p, today)]):
-        day, label = today + 1, "tomorrow"  # today's games have all started
+    day, label = stream_day(league, roster + [f.player for f in pool[:30]])
     not_started = day == today
     slots = list(lineup_slots(league))
     if not_started:  # players already playing today keep their slots
@@ -329,6 +333,62 @@ def daily_streams(league, team, free_agents, injuries):
         used.add(f.player.playerId)
         moves.append((f, drop, gain))
     return {"day": day, "label": label, "moves": moves}
+
+
+def stream_day(league, players):
+    """(scoring period, "today" / "tomorrow"): today until all of today's games have started."""
+    today = getattr(league, "current_week", 1) or 1
+    now_ms = time.time() * 1000
+    if any(g and g["date"] > now_ms for p in players for g in [_game(league, p, today)]):
+        return today, "today"
+    return today + 1, "tomorrow"
+
+
+def tonight(league, team, free_agents, injuries, top=15):
+    """The best free agents to stream for the next game day, each with why: [{form, game, proj, parts,
+    teammate, why}] best first, plus the recommended moves (daily_streams). Only healthy players not
+    listed day-to-day whose game hasn't started."""
+    if not getattr(league, "pro_schedule", None):
+        return None
+    import defense
+    import opportunity
+    import usage
+    from fantasy import waivers
+    on_waivers = waivers(league)
+    pool = [f for f in free_agents if f.healthy and f.player.proTeam != "FA" and f.baseline > 0
+            and f.player.playerId not in on_waivers and f.status not in STREAM_RISKY]
+    day, label = stream_day(league, [p for p in team.roster] + [f.player for f in pool[:30]])
+    now_ms = time.time() * 1000
+    rows = []
+    for f in pool:
+        p = f.player
+        g = _game(league, p, day)
+        if not g or g["date"] <= now_ms or not _available(p, g, injuries):
+            continue
+        tid = nba_team_id(p)
+        parts = matchups.parts(league, g, tid, defense.bucket(p))
+        boost, mates = usage.for_game(league, p, g), (getattr(league, "_fh_usage_boost", {}).get(p.playerId) or (1, []))[1]
+        mult = boost
+        for v in parts.values():
+            mult *= v
+        why = [f"{f.minutes:.0f} min x {f.rate:.2f} pts/min = {f.baseline:.1f} a game" if f.minutes else
+               f"{f.baseline:.1f} a game"]
+        trend = opportunity.minutes_trend(p, league.year)
+        if trend is not None and abs(trend) >= 3:
+            why.append(f"minutes {'up' if trend > 0 else 'down'} {abs(trend):.0f} a game this week")
+        if f.recent_games >= 3 and abs(f.trend) >= 0.2:
+            why.append(f"{'hot' if f.trend > 0 else 'cold'}: {f.recent:.1f} a game over the last 15 days")
+        names = {"opponent": "opponent pace/defence", "position": f"defence vs {defense.bucket(p) or '?'}s",
+                 "back-to-back": "2nd night of a back-to-back (rest risk)", "blowout": "blowout risk",
+                 "end of season": "end-of-season rest"}
+        for k, v in parts.items():
+            if abs(v - 1) >= 0.01:
+                why.append(f"{names.get(k, k)} {v - 1:+.0%}")
+        why += mates
+        rows.append({"form": f, "game": g, "proj": f.baseline * mult, "parts": parts, "teammate": boost, "why": why})
+    rows.sort(key=lambda r: -r["proj"])
+    plan = daily_streams(league, team, free_agents, injuries)
+    return {"day": day, "label": label, "players": rows[:top], "moves": (plan or {}).get("moves", [])}
 
 
 def today_moves(league, team, injuries):

@@ -59,7 +59,7 @@ def projected_final(league, so_far=None, teams=None, injuries=None):
     out = {}
     for team in (teams or league.teams):
         done = (so_far or {}).get(team.team_id, team.points_for)
-        rest = rest_of_season(league, team.roster, lineup_slots(team), injuries)
+        rest = rest_of_season(league, team.roster, lineup_slots(league), injuries)
         out[team.team_id] = (done, rest, done + rest)
     return out
 

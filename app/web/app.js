@@ -136,9 +136,12 @@ function renderStandings(view) {
       ${card("You", `#${place} of ${teams.length}`, `${num(mine.points, 1)} pts · ${mine.behind ? num(mine.behind, 1) + " behind" : "in first"}`)}
       ${card("Scored today", signed(mine.today), "your team, live")}
       ${card("Projected finish", projPlace ? `#${projPlace}` : "-", mine.proj_final ? `${num(mine.proj_final, 0)} pts` : "")}
+      ${mine.next7 != null ? card("Next 7 days", `${num(mine.next7, 0)} pts`, `${raceRank(teams, mine)} of ${teams.length} · ${num(mine.games7, 0)} games`) : ""}
     </section>
     <section class="card flush" id="standings-table"></section>
-    <div class="note">Points include games in progress · today = scored so far today · proj final = projected season total</div>
+    <div class="note">Points include games in progress · today = scored so far today · next 7d = projected points over the next 7 days
+      (best daily lineups) · games 7d = player-games that fit your lineup · behind in 7d = green if you'd close the gap ·
+      proj final = projected season total</div>
     <section class="card"><div class="k">Rank by week</div><div class="sub">hover a week for its table</div>
       <div class="chart" id="rank-chart"></div></section>`;
 
@@ -152,11 +155,19 @@ function renderStandings(view) {
     { key: "bar", label: "", html: (t) => `<div class="bar"><i style="width:${100 * t.points / most}%"></i></div>` },
     { key: "today", label: "Today", num: true, html: (t) => signed(t.today) },
     { key: "behind", label: "Behind", num: true, html: (t) => t.behind ? num(t.behind) : "-" },
+    { key: "next7", label: "Next 7d", num: true, html: (t) => num(t.next7, 0) },
+    { key: "games7", label: "Games 7d", num: true, html: (t) => num(t.games7, 0) },
+    { key: "behind7", label: "Behind in 7d", num: true, html: (t) => t.behind7 == null ? "" : t.behind7 ? num(t.behind7, 0) : "-",
+      cls: (t) => t.behind7 == null || t.behind == null ? "" : t.behind7 < t.behind ? "good" : t.behind7 > t.behind ? "bad" : "" },
     { key: "proj_final", label: "Proj final", num: true, html: (t) => num(t.proj_final, 0) },
     { key: "proj_rank", label: "Proj rank", num: true, html: (t) => t.proj_rank ? "#" + t.proj_rank : "-" },
   ], teams, { rowClass: (t) => t.me ? "me" : "" });
 
   rankChart($("#rank-chart"), s);
+}
+
+function raceRank(teams, mine) {
+  return "#" + (teams.filter((t) => (t.next7 || 0) > mine.next7).length + 1);
 }
 
 function card(k, v, sub) {

@@ -24,15 +24,27 @@ def load(demo=False):
         league = fantasy.connect(cfg)
     rules = stats.scoring_rules(league)
     me = fantasy.my_team(league, cfg)
+    real = bool(getattr(league, "pro_schedule", None))  # the demo league has no ESPN feed or schedule
+    # Everything that only waits on ESPN starts at once, side by side (each call takes 1-8 seconds).
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(8)
+    soon = {"activity": pool.submit(_safe(league.recent_activity, []), size=50)}
+    if real:
+        import boxscores
+        import defense
+        import matchups
+        soon.update(injuries=pool.submit(_safe(news.injuries, {})),
+                    chat=pool.submit(_safe(chat.league_chat, []), league),
+                    trades=pool.submit(_safe(feed.trades, []), league),
+                    free=pool.submit(_safe(fantasy.free_agents, []), league),
+                    pending=pool.submit(_safe(fantasy.pending_moves, []), league),
+                    ratings=pool.submit(_safe(matchups.for_league, {}), league),
+                    defense=pool.submit(_safe(lambda lg: (boxscores.season(lg), defense.for_league(lg)), None), league))
     if not demo:
         stats.snapshot(league, rules)
-    try:
-        activity = league.recent_activity(size=50)
-    except Exception:
-        activity = []
-    real = bool(getattr(league, "pro_schedule", None))  # the demo league has no ESPN feed or schedule
-    chat_msgs = chat.league_chat(league) if real else []
-    trades = feed.trades(league) if real else []
+    activity = soon["activity"].result()
+    chat_msgs = soon["chat"].result() if real else []
+    trades = soon["trades"].result() if real else []
     if real:
         fantasy.waivers(league)  # before any planning: waiver players only count once they clear
     # Accepted trades count as done for everything forward-looking; today's lineup uses the real roster.
@@ -43,7 +55,10 @@ def load(demo=False):
     mine, others, fas = analysis
     scores = stats.season_scores(league)
     live, weekly = stats.live_points(league, scores), stats.weekly_standings(league, scores)
-    injuries = news.injuries() if real else {}
+    injuries = soon["injuries"].result() if real else {}
+    for f in soon.values():
+        f.result()  # the rest are cached on the league object by now
+    pool.shutdown()
     projected = projections.projected_final(league, live, list(after.values()), injuries)
     day = getattr(league, "current_week", 1) or 1
     today_pts = {tid: days[day] for tid, (_, days) in scores.items() if day in days}  # live; none in the demo
@@ -53,11 +68,12 @@ def load(demo=False):
         switch = max(t["process_at"] for t in pending).date()
         later = planner.week(league, planned.roster, values, injuries)
         week = [b if a["date"] > switch else a for a, b in zip(week, later)]
+    race = race_week(league, list(after.values()), injuries) if real else {}
     plan = dict(week=week, moves=planner.today_moves(league, me, injuries),
                 streamers=planner.streamers(league, planned, fas, injuries))
     out = dict(league=league, cfg=cfg, rules=rules, me=me, planned=planned, pending=pending, demo=demo,
                 today_pts=today_pts, projected=projected, live=live, weekly=weekly,
-                injuries=injuries, plan=plan,
+                injuries=injuries, plan=plan, race=race,
                 opportunities=opportunity.opportunities(league, injuries) if real else [],
                 partners=trade.partners(league, planned, fantasy.load_keep()),
                 alerts=fantasy.build_alerts(league, planned, cfg["thresholds"], analysis, injuries),
@@ -70,6 +86,27 @@ def load(demo=False):
     except Exception:
         pass  # never let bookkeeping stop the app loading
     return out
+
+
+def race_week(league, teams, injuries, days=7):
+    """{team id: (projected points over the next `days` days, player-games that fit in the lineup,
+    lineup slots)}: everyone's best daily lineups, the same simulation as your Week Ahead."""
+    out = {}
+    for t in teams:
+        values = {p.playerId: fantasy.form_of(p, league.year).baseline for p in t.roster}
+        week = planner.week(league, t.roster, values, injuries, days)
+        out[t.team_id] = (sum(d["points"] for d in week), sum(d["filled"] for d in week), sum(d["slots"] for d in week))
+    return out
+
+
+def _safe(fn, fallback):
+    """fn, but returning `fallback` instead of raising (one ESPN hiccup shouldn't stop the whole load)."""
+    def run(*args, **kw):
+        try:
+            return fn(*args, **kw)
+        except Exception:
+            return fallback
+    return run
 
 
 def points(d, team):

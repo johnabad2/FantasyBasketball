@@ -8,8 +8,11 @@ from fantasy import form_of
 POSITIONS = ["PG", "SG", "SF", "PF", "C"]
 
 
-def lineup_slots(team):
-    return sum(1 for p in team.roster if p.lineupSlot not in ("BE", "IR")) or 10
+def lineup_slots(league):
+    """How many players start each day: the league's lineup settings (not who happens to be in a
+    slot right now - a manager who benches everyone on a light night still has 10 slots)."""
+    import planner
+    return len(planner.lineup_slots(league)) or 10
 
 
 def strength(forms, slots):
@@ -38,10 +41,10 @@ def simulate(league, team_a, team_b, send_ids, get_ids):
     a_after = [f for f in a if f.player.playerId not in send_ids] + [f for f in b if f.player.playerId in get_ids]
     b_after = [f for f in b if f.player.playerId not in get_ids] + [f for f in a if f.player.playerId in send_ids]
 
-    before = {t.team_id: strength(forms[t.team_id], lineup_slots(t)) for t in league.teams}
+    before = {t.team_id: strength(forms[t.team_id], lineup_slots(league)) for t in league.teams}
     after = dict(before)
-    after[team_a.team_id] = strength(a_after, lineup_slots(team_a))
-    after[team_b.team_id] = strength(b_after, lineup_slots(team_b))
+    after[team_a.team_id] = strength(a_after, lineup_slots(league))
+    after[team_b.team_id] = strength(b_after, lineup_slots(league))
     rank = lambda table, tid: 1 + sum(v > table[tid] for v in table.values())
 
     def side(team, old, new):
@@ -79,7 +82,7 @@ def balance(league, team_a, team_b, send=(), get=(), limit=8, max_extra=2):
     Returns [{'send', 'get', 'da', 'db', 'send_names', 'get_names'}]."""
     from itertools import combinations
     A, B = _values(league, team_a), _values(league, team_b)
-    sa, sb = lineup_slots(team_a), lineup_slots(team_b)
+    sa, sb = lineup_slots(league), lineup_slots(league)
     base_a, base_b = _strength(A.values(), sa), _strength(B.values(), sb)
 
     def evaluate(s, g):
@@ -162,7 +165,7 @@ def partners(league, my_team, keep=(), per_team=2, limit=12):
     from fantasy import balance_problems, unbalances
     year = league.year
     mine = list(my_team.roster)
-    my_vals, my_slots = _values(league, my_team), lineup_slots(my_team)
+    my_vals, my_slots = _values(league, my_team), lineup_slots(league)
     my_before = _strength(my_vals.values(), my_slots)
     my_problems = balance_problems(mine)
     out = []
@@ -170,7 +173,7 @@ def partners(league, my_team, keep=(), per_team=2, limit=12):
         if team.team_id == my_team.team_id:
             continue
         theirs = list(team.roster)
-        their_vals, their_slots = _values(league, team), lineup_slots(team)
+        their_vals, their_slots = _values(league, team), lineup_slots(league)
         their_before = _strength(their_vals.values(), their_slots)
         their_problems = balance_problems(theirs)
         found = []

@@ -47,8 +47,18 @@ def free_agents_trades(d):
                          "get": x["get"].name, "get_id": x["get"].playerId, "fixes": ", ".join(fixes),
                          "both": bool(x["fixes_mine"] and x["fixes_theirs"]),
                          "me": round(x["me"], 1) + 0, "them": round(x["them"], 1) + 0})
+    import valuation
+    offers = []
+    for o in (fantasy.trade_offers(league, d["planned"], d["fas"], d["injuries"]) if real else []):
+        offers.append({"incoming": o["incoming"], "team": o["team"].team_name.strip(), "team_id": o["team"].team_id,
+                       "send": [p.name for p in o["send"]], "send_ids": [p.playerId for p in o["send"]],
+                       "get": [p.name for p in o["get"]], "get_ids": [p.playerId for p in o["get"]],
+                       "me": round(o["me"]), "them": round(o["them"]), "looks_fair": o["looks_fair"],
+                       "verdict": "accept" if o["me"] >= valuation.MARGIN else
+                                  "even" if o["me"] > -valuation.MARGIN else "decline",
+                       "proposed": o["proposed"].strftime("%a %d %b") if o["proposed"] else ""})
     return {"free_agents": fas, "upgrades": sum(1 for f in fas if f["drop"]), "ideas": ideas, "partners": partners,
-            "min_games": t["min_games"]}
+            "offers": offers, "min_games": t["min_games"]}
 
 
 # ---------------------------------------------------------------- League

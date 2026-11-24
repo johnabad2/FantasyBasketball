@@ -15,7 +15,8 @@ this season's team stats). Cached in data/team_ratings.json and refreshed once a
 
 game_factor adds the schedule effects on top of the opponent (see README for sources):
 - Back-to-back, second night: teams shoot worse and play slower (Aicardi & Zitzewitz, 20,000+
-  games), and stars/veterans are the ones rested -> B2B.
+  games), and stars/veterans are the ones rested -> B2B. Measured this season: players averaging 24+
+  minutes sat 17% of second nights vs 7.5% of other games, so the expected value drops ~9%.
 - Blowout risk: a lopsided game (expected margin past ~8 points) costs starters 4th-quarter
   minutes -> 1% per point past BLOWOUT_FROM, at most BLOWOUT_MAX.
 - End of season: the last LATE_DAYS days, teams rest players; losing teams shut them down."""
@@ -31,7 +32,7 @@ SITE = "https://site.api.espn.com/apis"
 DEF_WEIGHT = 0.5
 LIMITS = (0.9, 1.1)  # never move a projection more than 10% either way
 TRUST_GAMES = 20     # this season's games before it counts as much as last season
-B2B = 0.97           # second night of a back-to-back
+B2B = 0.92           # second night of a back-to-back: rotation players sat 17% of them vs 7.5% otherwise (2026-27 box scores)
 BLOWOUT_FROM, BLOWOUT_MAX = 8.0, 0.06  # expected margin (points) where blowout risk starts; biggest cut
 HOME = 2.5           # home-court points
 LATE_DAYS = 14       # end-of-season window
@@ -146,32 +147,52 @@ def _dates(league):
     return league._fh_game_dates
 
 
-def schedule_factor(league, table, game, team_id):
-    """Multiplier for this game beyond the opponent: back-to-back, blowout risk, end of season."""
+def schedule_parts(league, table, game, team_id):
+    """{"back-to-back" / "blowout" / "end of season": multiplier} for this game, only those that apply."""
     if not game:
-        return 1.0
-    f = 1.0
+        return {}
+    out = {}
     day = datetime.fromtimestamp(game["date"] / 1000, EASTERN).date()
     dates, last = _dates(league)
     if day - timedelta(days=1) in dates.get(team_id, ()):
-        f *= B2B
+        out["back-to-back"] = B2B
     opp_id = opponent(game, team_id)
     me, opp = table.get(team_id), table.get(opp_id)
     if me and opp and me.get("margin") is not None and opp.get("margin") is not None:
         margin = me["margin"] - opp["margin"] + (HOME if game["homeProTeamId"] == team_id else -HOME)
-        f *= 1 - min(max(abs(margin) - BLOWOUT_FROM, 0) * 0.01, BLOWOUT_MAX)
+        cut = min(max(abs(margin) - BLOWOUT_FROM, 0) * 0.01, BLOWOUT_MAX)
+        if cut:
+            out["blowout"] = 1 - cut
     if last and (last - day).days < LATE_DAYS:
         win = (me or {}).get("win_pct")
-        f *= TANKING if win is not None and win < 0.4 else LATE
+        out["end of season"] = TANKING if win is not None and win < 0.4 else LATE
+    return out
+
+
+def schedule_factor(league, table, game, team_id):
+    """Multiplier for this game beyond the opponent: back-to-back, blowout risk, end of season."""
+    f = 1.0
+    for v in schedule_parts(league, table, game, team_id).values():
+        f *= v
     return f
+
+
+def parts(league, game, team_id, pos=None):
+    """Every multiplier on a player's value for this game, by name: opponent (pace + defence),
+    position (how that opponent defends G / F / C), then the schedule effects that apply."""
+    if not game:
+        return {}
+    import defense
+    table = for_league(league)
+    opp = opponent(game, team_id)
+    return {"opponent": factor(table, opp), "position": defense.factor(league, opp, pos),
+            **schedule_parts(league, table, game, team_id)}
 
 
 def game_factor(league, game, team_id, pos=None):
     """Everything about this game that moves a player's value: opponent x schedule, and (with pos =
     G / F / C) how that opponent defends his position (defense.py)."""
-    if not game:
-        return 1.0
-    import defense
-    table = for_league(league)
-    opp = opponent(game, team_id)
-    return factor(table, opp) * schedule_factor(league, table, game, team_id) * defense.factor(league, opp, pos)
+    f = 1.0
+    for v in parts(league, game, team_id, pos).values():
+        f *= v
+    return f

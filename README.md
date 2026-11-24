@@ -37,7 +37,7 @@ Double-click **`Fantasy Hoops.bat`** (or run `.venv\Scripts\python app\webapp.py
 your web browser instead, `--demo` for the made-up league). It opens in its own window, in a compact
 dark design: sortable tables (click a header), player photos, hoverable charts, and player names you
 can click anywhere to open that player's page. Long pages are split into sub-tabs (My Team: Alerts / Roster;
-Free Agents & Trades: Free agents / Streamers / Trade partners / Trade ideas; Trade Lab: This trade /
+Free Agents & Trades: Tonight / Offers / Free agents / Streamers / Trade partners / Trade ideas; Trade Lab: This trade /
 Suggestions), and the app remembers which one you had open.
 
 Under the hood a small local server (`app\webapp.py`, only reachable from this PC) loads the league
@@ -46,7 +46,9 @@ plain HTML/CSS/JavaScript in `app\web\` with ECharts for the charts.
 
 Tabs:
 
-- **Standings** (points update live while games are on, ranked automatically, with a live **today** column; below it a week-by-week rank chart with your team highlighted - hover a week for that week's table), **My Team** (alerts + roster form). The roster shows whether each player is
+- **Standings** (points update live while games are on, ranked automatically, with a live **today** column and the
+  **7-day race**: every team's projected points over the next 7 days with its best daily lineups, how many player-games
+  fit its lineup, and where the gap to first will be (green if you'd close it); below it a week-by-week rank chart with your team highlighted - hover a week for that week's table), **My Team** (alerts + roster form). The roster shows whether each player is
   **in your lineup or on your bench**, **their NBA game today** (your local time), and their
   **NBA role**: how many of their last 5 games they started, from ESPN box scores (preseason
   until the regular season has games). If a bench player plays today and a starter doesn't,
@@ -63,11 +65,18 @@ Tabs:
   player, with expected return dates; click a player for the full note and latest news. Beside it,
   **Opportunities**: free agents set to play more because a teammate is out (his minutes are shared
   by up to 3 healthy teammates at his positions; the gain is their points per minute x the extra
-  minutes, damped to 75% and capped at +60%) or because their minutes are rising this week
+  minutes, damped to 75% and capped at +60%) or because their minutes are rising this week.
+  For tonight and tomorrow the same idea feeds every projection directly (**teammate out**, `app\usage.py`): once a
+  regular teammate has missed 2+ games this season, it uses how the player actually did without him (his average
+  without vs with, shrunk by games without / (games without + 5)); before that, the minutes-sharing estimate
 - **Schedule**: NBA games per day for the next two weeks (light days in amber) and a grid of
   games per team per week for six weeks, with your players and the best free agents on each team;
   hover a cell for the dates and opponents
-- **Free Agents & Trades**: two halves side by side. Left, the top 100 available players; green
+- **Free Agents & Trades**: **Tonight** lists the best free agents playing tonight (healthy, not day-to-day, game
+  not started) with the projection for that game and **why**: minutes x points per minute, minutes trend, hot or
+  cold, opponent, position defence, back-to-back, blowout risk, and regular teammates who are out. Above it, the
+  add/drop moves worth making. **Offers** scores every pending trade offer involving you (sent to you or by you) like
+  Trade Lab, with a verdict; click one to open it there. Then the top 100 available players; green
   ones beat your weakest player per game and over the next 30 days (**next 30d**). Right, up to 3
   trade ideas per team, best gain first, and **trade partners**: fair one-for-one swaps (within about
   10% in value) that fix a position imbalance for you, for them or both, without either starting
@@ -159,6 +168,8 @@ Saved in `config\keep.json` (stays on your PC). You can still tick kept players 
 .venv\Scripts\python app\fantasy.py alerts
 .venv\Scripts\python app\fantasy.py alerts --notify     # also pops Windows notifications for new alerts
 .venv\Scripts\python app\fantasy.py --demo alerts       # made-up league, no ESPN needed
+.venv\Scripts\python app\fantasy.py tonight              # best streams tonight, and why
+.venv\Scripts\python app\fantasy.py backtest             # replay the season to check the projections
 ```
 
 League-wide stats:
@@ -183,9 +194,10 @@ the more history you get. `data\` stays on your PC; it's in `.gitignore`.
   projection until the player has 10 games. Category leagues use a rough composite of the
   counting stats instead.
 - **base** (how good a player really is per game) = expected **minutes** x fantasy points **per minute**.
-  Points per minute is his own season shrunk toward ESPN's projection by games / (games + 20), so one
-  huge or awful night barely moves it; minutes blend ESPN's projection, his season and his last week
-  (counted double), so a new role shows quickly. **worth** (used for pickups and trades) adds recent
+  Points per minute is his own season shrunk toward ESPN's projection by games / (games + 8), so one
+  huge or awful night barely moves it; minutes blend ESPN's projection, his season, and his last 15 days
+  and last 7 days counted extra (a game this week counts 5x, one last week 3x), so a new role or a
+  benching shows within days. These settings were picked by replaying the season (see the backtest below). **worth** (used for pickups and trades) adds recent
   form, again shrunk so a one- or two-game streak only counts a little.
 - **L15**: average over the last 15 days.
 - **trend**: L15 against base. ±25% or more counts as hot or slumping (after 5 games); shown in
@@ -206,6 +218,7 @@ The alerts:
 | Opportunity | A free agent's teammate is out (or his minutes are up) and at his boosted value he beats one of your players |
 | Minutes down | One of your players is playing 5+ fewer minutes a game this week than usual (often a smaller role) |
 | Buy low / Sell high | After 5 games: a player's season average is 15%+ off ESPN's projection while his minutes are normal, and 4+ points a game off what the app thinks he's really worth. A slump or spike on normal minutes is usually shooting luck that evens out, but his manager sees the average. More minutes than projected is a real role change, so it doesn't count |
+| Trade offer | Someone sent you a trade: worth accepting (you gain 40+ rest-of-season lineup points), about even, or costs you |
 | Trade idea | One of their players has a higher base than one of yours, but their recent form is no better than yours, so they'd likely accept |
 | Roster balance | You have more than 3 or fewer than 2 players at a main position (e.g. 4 PGs, or 1 C). IR players count toward "too many" but not "too few" |
 
@@ -215,7 +228,8 @@ Daily streaming is the biggest lever in this league. With 13 players, only about
 on a given day, so every team fills about 5.5 of its 10 lineup slots a day. The league counts total
 points and allows unlimited pickups, so a slot filled by a streamer is pure gain. Cycling 2 bench
 spots a day projected about +5,000 points over the season, more than the gap between first and
-seventh. Players in your own pending waiver claims or trade offers are never suggested as drops.
+seventh. Players in your own pending waiver claims or trade offers (from the last 14 days) are never
+suggested as drops. A one-night stream only drops a player if at least 3 free agents are as good as him.
 
 Pickup, streamer and trade suggestions never create a balance problem you don't already have
 (e.g. a 4th PG, or leaving you with 1 C). They also never touch players in a trade that's
@@ -232,7 +246,7 @@ It uses the methods fantasy analysts use for trade values and pickups:
 - **Value over replacement.** A trade that frees a roster spot is credited with the best free agent
   you could add. One that overfills your roster costs your weakest player. Both teams first get the
   free waiver moves anyone could make, so a trade only counts what you couldn't get for free.
-- **Regression to the mean.** Early-season numbers lean on ESPN's projection (games / (games + 20)),
+- **Regression to the mean.** Early-season numbers lean on ESPN's projection (games / (games + 8)),
   so one big night doesn't turn a bench player into a must-add.
 - **Would they accept?** Other managers judge trades by the public numbers, so "looks fair to them"
   is checked with ESPN's projected points per game. They may lose up to 1.5 a game.
@@ -245,8 +259,9 @@ Each game is also adjusted for things that change how much a player scores that 
 | Factor | Effect | Why |
 |---|---|---|
 | Opponent | Up to ±10% for pace and defence | More possessions mean more of every stat; weak defences give up more points |
-| Defence vs position | Up to ±6% | Some teams are weak against guards, forwards or centres in particular. Worked out from this season's ESPN box scores (fantasy points per minute each team allows to G / F / C, in your league's scoring), counting only the tilt beyond the team's overall defence, and shrunk toward none early in the season (`app\defense.py`, cached in `data\`) |
-| Back-to-back, second night | −3% | Teams shoot worse and play slower on no rest, and that's when stars and veterans get rested |
+| Defence vs position | Up to ±3% | Some teams may be weak against guards, forwards or centres in particular. Worked out from this season's ESPN box scores (fantasy points per minute each team allows to G / F / C, in your league's scoring), counting only the tilt beyond the team's overall defence, and shrunk hard (games / (games + 60)) because the backtest found no reliable signal in it yet (`app\defense.py`, cached in `data\`) |
+| Back-to-back, second night | −8% | Teams shoot worse and play slower on no rest, and that's when players get rested: this season, players averaging 24+ minutes sat 17% of second nights vs 7.5% of other games (re-measured by the backtest) |
+| Teammate out (tonight / tomorrow) | Up to +60% | When a regular is out, others get his shots and minutes. Measured from each player's games without that teammate this season (`app\usage.py`) |
 | Blowout risk | −1% for each point the expected margin is past 8, at most −6% | Starters sit 4th quarters in lopsided games. The margin comes from each team's scoring margin, with last season's counted at 60% because teams regress |
 | Last 2 weeks of the season | −5%, or −15% for teams winning under 40% | Teams rest players late, and losing teams shut them down |
 
@@ -267,6 +282,16 @@ game vs what they then averaged (next to two simple guesses, their season averag
 projection, so you can see whether the app beats them), and teams' projected 7-day points vs what
 they scored. Use it to tune the model rather than guessing.
 
+**Backtest** (no waiting needed): `.venv\Scripts\python app\fantasy.py backtest` replays every finished
+game this season (box scores from ESPN, cached in `data\boxscores_fp\`). Each player-game is projected
+using only what was known before it and compared with what he scored. It reports the average miss of
+the app vs his season average and ESPN's projection, tries a grid of form settings (how fast to trust
+his own games, how much recent minutes count), and checks each game factor: a slope of 1.0 means the
+factor is the right size, 0 means no signal. It also re-measures how often rotation players sit the
+second night of a back-to-back. On 3,400+ player-games through 23 Nov 2026 the app missed by 10.2 points
+a game vs 10.5 for the season average and 11.2 for ESPN's projection; the opponent factor held up, while
+defence vs position didn't (so it was turned down). Re-run it every few weeks.
+
 ## Automatic checks
 
 `scripts\check.ps1` runs `export` and `alerts --notify` and logs to `data\check.log`. You only get a notification for
@@ -275,3 +300,13 @@ alerts that are new since the last run. To run it every 3 hours, set up a schedu
 ```
 schtasks /Create /TN "FantasyHoops" /SC HOURLY /MO 3 /TR "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"<full path to>\scripts\check.ps1\""
 ```
+
+**Pre-lock reminder.** `scripts\tonight.ps1` runs `fantasy.py tonight --notify`: a notification with
+tonight's stream moves (only when one is worth it), shortly before the first games lock. NBA games
+mostly start at 7pm US Eastern, which is midnight in Ireland in winter, so 11pm Irish time works:
+
+```
+schtasks /Create /TN "FantasyHoopsTonight" /SC DAILY /ST 23:00 /TR "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"<full path to>\scripts\tonight.ps1\""
+```
+
+`.venv\Scripts\python app\fantasy.py tonight` prints the same list, with the reasons, any time.

@@ -35,8 +35,13 @@ BENCH_SLOTS = {"BE", "IR"}
 POSITIONS = ("PG", "SG", "SF", "PF", "C")
 MIN_AT_POSITION, MAX_AT_POSITION = 2, 3  # aim for 2-3 players at each main position
 
-PRIOR_GAMES = 20    # ESPN's projection counts like this many games against a player's own (shrinkage)
-MINUTES_PRIOR = 8   # projected minutes count like this many games; last week's games count double
+# Form settings, tuned by replaying the season (backtest.py; 3,400+ player-games through 23 Nov 2026):
+# trusting a player's own games sooner and his last two weeks of minutes more cut the average miss.
+PRIOR_GAMES = 8     # ESPN's projected points per minute counts like this many games against his own (shrinkage)
+MINUTES_PRIOR = 4   # projected minutes count like this many games
+RECENT_7_WEIGHT = 2   # each game in the last 7 days counts this many extra times for minutes (role changes show fast)
+RECENT_15_WEIGHT = 2  # each game in the last 15 days counts this many extra times (so the last week counts 5x)
+NO_PROJECTION_PRIOR = 20  # a player ESPN doesn't project is pulled toward NO_PROJECTION_VALUE like this many games
 RECENT_PRIOR = 5    # a hot/cold stretch is shrunk toward the baseline like this many games
 MARKET_GAMES = 5    # buy-low / sell-high: games before a player's season average means anything to his manager
 MARKET_GAP = 0.15   # season average this far off ESPN's projection (either way)
@@ -120,27 +125,31 @@ def form_of(player, year):
 
     - Points per minute is a skill and changes slowly: his own season, shrunk toward ESPN's
       projection by games / (games + PRIOR_GAMES), so one huge (or awful) night barely moves it.
-    - Minutes follow his role and change fast: ESPN's projected minutes, his season minutes and
-      his last week's minutes (counted double), so a new starting job or a benching shows quickly.
+    - Minutes follow his role and change fast: ESPN's projected minutes, his season minutes, and his
+      last 7 / last 15 days counted extra (RECENT_*_WEIGHT), so a new starting job or a benching shows
+      quickly. The weights are tuned by replaying the season (backtest.py).
     Falls back to a plain shrunk average when minutes aren't available (e.g. no projection)."""
     stats = player.stats
     season, proj = stats.get(f"{year}_total", {}), stats.get(f"{year}_projected", {})
-    last7 = stats.get(f"{year}_last_7", {})
+    last7, last15 = stats.get(f"{year}_last_7", {}), stats.get(f"{year}_last_15", {})
     games = _gp(season)
     season_v, proj_v = split_value(season), split_value(proj)
     s_min, p_min = _avg(season, "MPG") or _avg(season, "MIN"), _avg(proj, "MPG") or _avg(proj, "MIN")
     r_min, r_gp = _avg(last7, "MPG") or _avg(last7, "MIN"), _gp(last7)
+    f_min, f_gp = _avg(last15, "MPG") or _avg(last15, "MIN"), _gp(last15)
+    w7, w15 = RECENT_7_WEIGHT * r_gp, RECENT_15_WEIGHT * f_gp
     w = games / (games + PRIOR_GAMES)
     minutes = rate = 0.0
     if proj_v and p_min and (not games or s_min):
         rate = w * (season_v / s_min if games else 0) + (1 - w) * (proj_v / p_min)
-        minutes = ((MINUTES_PRIOR * p_min + games * s_min + 2 * r_gp * r_min)
-                   / (MINUTES_PRIOR + games + 2 * r_gp))
+        minutes = ((MINUTES_PRIOR * p_min + games * s_min + w7 * r_min + w15 * f_min)
+                   / (MINUTES_PRIOR + games + w7 + w15))
         baseline = rate * minutes
     elif proj_v:
         baseline = w * season_v + (1 - w) * proj_v
     else:  # no ESPN projection (a fringe player or late signing): pull him toward a bench-level value
-        baseline = (games * season_v + PRIOR_GAMES * NO_PROJECTION_VALUE) / (games + PRIOR_GAMES) if games else 0.0
+        baseline = ((games * season_v + NO_PROJECTION_PRIOR * NO_PROJECTION_VALUE) / (games + NO_PROJECTION_PRIOR)
+                    if games else 0.0)
     recent, recent_games = baseline, 0
     for key in ("last_15", "last_7"):
         split = stats.get(f"{year}_{key}", {})
@@ -407,27 +416,108 @@ def waivers(league):
     return league._fh_waivers
 
 
+PENDING_DAYS = 14  # how far back to look for moves still pending (trade offers stay open for days)
+
+
+def pending_moves(league, days=PENDING_DAYS):
+    """Every transaction in the league still PENDING (waiver claims, trade offers), from the last `days`
+    scoring periods (ESPN lists transactions by the day they were made). Trade offers already accepted
+    or declined are left out. Cached on the league object; [] without ESPN (demo)."""
+    if getattr(league, "_fh_pending_moves", None) is not None:
+        return league._fh_pending_moves
+    out = []
+    if getattr(league, "pro_schedule", None):
+        from concurrent.futures import ThreadPoolExecutor
+        today = league.current_week
+
+        def get(day):
+            try:
+                return league.espn_request.league_get(
+                    params={"view": "mTransactions2", "scoringPeriodId": day}).get("transactions", [])
+            except Exception:
+                return []
+        with ThreadPoolExecutor(8) as pool:
+            every = [t for ts in pool.map(get, range(max(today - days, 1), today + 1)) for t in ts]
+        answered = {t.get("relatedTransactionId") for t in every if t.get("type") in ("TRADE_ACCEPT", "TRADE_DECLINE",
+                                                                                         "TRADE_VETO", "TRADE_ERROR")}
+        seen = set()
+        for t in every:
+            if t.get("status") == "PENDING" and t.get("id") not in seen and t.get("id") not in answered:
+                seen.add(t.get("id"))
+                out.append(t)
+    league._fh_pending_moves = out
+    return out
+
+
 def committed(league, team):
     """Ids of your players tied up in your own pending moves: the drop in a waiver claim (dropping
     him first makes the claim fail) or a player in a trade offer you've made. Never suggest
-    dropping them. Cached on the league object; empty without ESPN (demo)."""
-    if getattr(league, "_fh_committed", None) is None:
-        out = set()
-        if getattr(league, "pro_schedule", None):
-            mine = {p.playerId for p in team.roster}
-            try:
-                data = league.espn_request.league_get(
-                    params={"view": "mTransactions2", "scoringPeriodId": league.current_week})
-                for t in data.get("transactions", []):
-                    if t.get("teamId") != team.team_id or t.get("status") != "PENDING":
-                        continue
-                    if t.get("type") in ("WAIVER", "TRADE_PROPOSAL"):
-                        out |= {i.get("playerId") for i in t.get("items", [])
-                                if i.get("type") in ("DROP", "TRADE") and i.get("playerId") in mine}
-            except Exception:
-                pass
-        league._fh_committed = out
-    return league._fh_committed
+    dropping them. Empty without ESPN (demo)."""
+    mine = {p.playerId for p in team.roster}
+    out = set()
+    for t in pending_moves(league):
+        if t.get("teamId") == team.team_id and t.get("type") in ("WAIVER", "TRADE_PROPOSAL"):
+            out |= {i.get("playerId") for i in t.get("items", [])
+                    if i.get("type") in ("DROP", "TRADE") and i.get("playerId") in mine}
+    return out
+
+
+def trade_offers(league, team, free_agents, injuries=None):
+    """Pending trade offers that involve you, both ways, scored like Trade Lab (valuation.evaluate):
+    [{incoming, other team, send (your players), get, me, them, looks_fair, market_them, proposed}]."""
+    memo = league.__dict__.setdefault("_fh_offers", {})
+    if team.team_id in memo:
+        return memo[team.team_id]
+    import valuation
+    from datetime import datetime
+    teams = {t.team_id: t for t in league.teams}
+    fill = valuation.replacement_players(league, free_agents)
+    out, cache = [], {}
+    for t in pending_moves(league):
+        if t.get("type") != "TRADE_PROPOSAL":
+            continue
+        items = [i for i in t.get("items", []) if i.get("type") == "TRADE"]
+        sides = {i.get("fromTeamId") for i in items} | {i.get("toTeamId") for i in items}
+        if team.team_id not in sides:
+            continue
+        other_id = next((x for x in sides if x != team.team_id), None)
+        other = teams.get(other_id)
+        if not other:
+            continue
+        send = {i["playerId"] for i in items if i.get("fromTeamId") == team.team_id}
+        get = {i["playerId"] for i in items if i.get("fromTeamId") == other_id}
+        mine = list(team.roster)
+        if not send <= {p.playerId for p in mine} or not get <= {p.playerId for p in other.roster}:
+            continue  # a player has moved since: ESPN will cancel it
+        r = valuation.evaluate(league, mine, list(other.roster), send, get, fill, injuries, cache)
+        name = {p.playerId: p for p in mine + list(other.roster)}
+        out.append({"id": t.get("id"), "incoming": t.get("teamId") != team.team_id, "team": other,
+                    "send": [name[i] for i in send], "get": [name[i] for i in get],
+                    "me": r["me"], "them": r["them"], "looks_fair": r["looks_fair"], "market_them": r["market_them"],
+                    "proposed": datetime.fromtimestamp(t["proposedDate"] / 1000) if t.get("proposedDate") else None})
+    memo[team.team_id] = sorted(out, key=lambda o: (not o["incoming"], -o["me"]))
+    return memo[team.team_id]
+
+
+def trade_offer_alerts(league, team, free_agents, injuries=None):
+    """One alert per pending trade offer sent to you: accept, counter or decline, with the numbers."""
+    import valuation
+    out = []
+    for o in trade_offers(league, team, free_agents, injuries):
+        if not o["incoming"]:
+            continue
+        gets = ", ".join(p.name for p in o["get"])
+        gives = ", ".join(p.name for p in o["send"])
+        if o["me"] >= valuation.MARGIN:
+            verdict, pri = "worth accepting", 1
+        elif o["me"] > -valuation.MARGIN:
+            verdict, pri = "about even for you (within the noise): accept only if it fits your plans", 2
+        else:
+            verdict, pri = "costs you: decline or counter", 2
+        out.append(Alert(f"offer:{o['id']}", pri, f"Trade offer from {o['team'].team_name.strip()}: {verdict}",
+                         f"You get {gets}; you give {gives}. Rest of season: you {o['me']:+.0f} pts, "
+                         f"them {o['them']:+.0f} pts (lineup points over replacement). Open it in Trade Lab to try a counter."))
+    return out
 
 
 def _cap(text):
@@ -653,6 +743,21 @@ def daily_stream_alerts(league, my_team, fas, injuries):
     return out
 
 
+FREE_AGENT_POOL = 300  # one fetch of this many serves every free-agent list in the app
+
+
+def free_agents(league, size=FREE_AGENT_POOL):
+    """ESPN's free agents (best first), fetched once per load and shared, since each fetch takes seconds."""
+    import threading
+    lock = league.__dict__.setdefault("_fh_free_lock", threading.Lock())
+    with lock:
+        cached = getattr(league, "_fh_free", None)
+        if cached is None or (len(cached[1]) < size and cached[0] < size):
+            want = max(size, FREE_AGENT_POOL)
+            league._fh_free = (want, league.free_agents(size=want))
+    return league._fh_free[1][:size]
+
+
 def analyze(league, my_team, fa_count=75, teams=None):
     """Form for your roster, every other roster, and the free-agent pool. teams: the teams to use
     (e.g. with pending trades applied); defaults to the league's."""
@@ -661,7 +766,7 @@ def analyze(league, my_team, fa_count=75, teams=None):
     others = [(tm, [form_of(p, year) for p in tm.roster])
               for tm in (teams or league.teams) if tm.team_id != my_team.team_id]
     # proTeam "FA" means unsigned in the NBA: no games, no points.
-    fas = [form_of(p, year) for p in league.free_agents(size=fa_count) if p.proTeam != "FA"]
+    fas = [form_of(p, year) for p in free_agents(league, fa_count) if p.proTeam != "FA"]
     return mine, others, fas
 
 
@@ -685,7 +790,8 @@ def build_alerts(league, my_team, thresholds, analysis=None, injuries=None):
         alerts += opportunity_alerts(league, mine, injuries, thresholds, leaving) + minutes_alerts(mine, league.year)
         alerts += (status_alerts(mine, injuries) + lineup_alerts(league, today_team, injuries)
                    + ir_alerts(league, my_team, injuries) + streamer_alerts(league, my_team, fas, injuries)
-                   + daily_stream_alerts(league, my_team, fas, injuries))
+                   + daily_stream_alerts(league, my_team, fas, injuries)
+                   + trade_offer_alerts(league, my_team, fas, injuries))
     alerts += trade_alerts(mine, others, thresholds, leaving)
     alerts += market_alerts(mine, others, league.year, leaving)
     return sorted(alerts, key=lambda a: a.priority)
@@ -823,6 +929,39 @@ def cmd_alerts(league, cfg, do_notify, save_snapshot):
         print(f"{n} new notification(s) sent." if n else "No new alerts since last run.")
 
 
+def cmd_tonight(league, cfg, do_notify=False):
+    """Tonight's best streams with the reasons, plus a Windows notification of the moves (used by the
+    pre-lock reminder, scripts/tonight.ps1)."""
+    import feed
+    import news
+    import planner
+    me = my_team(league, cfg)
+    plan = feed.after_trades(league).get(me.team_id, me)
+    fas = analyze(league, plan, fa_count=100)[2]
+    t = planner.tonight(league, plan, fas, news.injuries())
+    if not t:
+        print("No NBA schedule (demo league).")
+        return
+    print(f"Stream {t['label']}:")
+    for f, drop, gain in t["moves"]:
+        print(f"  add {f.player.name}, drop {drop.name}: +{gain:.0f} pts {t['label']}")
+    if not t["moves"]:
+        print("  no add/drop worth it")
+    print(f"\nBest free agents playing {t['label']}:")
+    for r in t["players"]:
+        f = r["form"]
+        print(f"  {f.player.name:24} {f.player.proTeam:4} proj {r['proj']:5.1f} (base {f.baseline:4.1f})  "
+              + "; ".join(r["why"][1:]))
+    if do_notify and t["moves"]:
+        try:
+            from winotify import Notification
+        except ImportError:
+            print("(winotify not installed; skipping the notification)")
+            return
+        Notification(app_id="Fantasy Hoops", title=f"Stream {t['label']}: {len(t['moves'])} move(s) before lock",
+                     msg="\n".join(f"+ {f.player.name} / - {d.name} (+{g:.0f})" for f, d, g in t["moves"])[:250]).show()
+
+
 # ---------------------------------------------------------------- setup
 
 def load_config():
@@ -857,6 +996,9 @@ def main():
     sub.add_parser("teams")
     sub.add_parser("standings")
     sub.add_parser("accuracy", help="how close the app's projections have been to what actually happened")
+    sub.add_parser("backtest", help="replay this season's games to check and tune the projections")
+    tn = sub.add_parser("tonight", help="best free agents to stream tonight, and why")
+    tn.add_argument("--notify", action="store_true", help="also send a Windows notification of the moves")
     r = sub.add_parser("roster")
     r.add_argument("team", nargs="?", help="team id or part of its name (default: yours)")
     a = sub.add_parser("alerts")
@@ -891,6 +1033,11 @@ def main():
     elif args.cmd == "accuracy":
         import accuracy
         print(accuracy.report())
+    elif args.cmd == "tonight":
+        cmd_tonight(league, cfg, args.notify)
+    elif args.cmd == "backtest":
+        import backtest
+        print(backtest.report(league))
     elif args.cmd == "standings":
         cmd_standings(league, cfg)
     elif args.cmd == "roster":

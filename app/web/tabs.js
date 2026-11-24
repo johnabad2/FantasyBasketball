@@ -27,7 +27,18 @@ const statusPill = (status, tag) => `<span class="pill ${tag || ""}">${esc(statu
 function renderFreeAgents(view) {
   const f = state.fa;
   const streams = (state.week && state.week.streamers) || [];
+  const tn = state.tonight || {}, offers = f.offers || [];
+  const incoming = offers.filter((o) => o.incoming).length;
   view.innerHTML = subtabs("fa", [
+    ["tonight", `Tonight <span class="count">${(tn.moves || []).length} moves</span>`,
+     `<div class="card"><div class="k">Stream ${esc(tn.label || "today")}</div><div id="tn-moves"></div></div>
+      <div class="card flush"><div class="pad"><div class="sub">Best free agents playing ${esc(tn.label || "today")} (healthy, not
+        day-to-day, game not started) · proj = base × everything about this game · why = what moves it</div></div>
+        <div id="tn-table" class="tall"></div></div>`],
+    ["offers", `Offers <span class="count">${incoming ? incoming + " for you" : offers.length}</span>`,
+     `<div class="card flush"><div class="pad"><div class="sub">Pending trade offers involving you, scored like Trade Lab
+        (rest-of-season lineup points over replacement; ±40 is within the noise). Click one to open it in Trade Lab.</div></div>
+        <div id="fa-offers" class="tall"></div></div>`],
     ["free", `Free agents <span class="count">${f.upgrades} upgrades</span>`,
      `<div class="card flush"><div class="pad"><div class="sub">worth = pts per game · green = better than one of yours,
         per game and over 30 days</div></div><div id="fa-table" class="tall"></div></div>`],
@@ -79,6 +90,48 @@ function renderFreeAgents(view) {
     $("#fa-partners").innerHTML = `<div class="empty small">No fair fixes found right now.</div>`;
   }
   renderStreamers($("#fa-streams"), streams);
+  renderTonight(tn);
+  renderOffers(offers);
+}
+
+function renderTonight(tn) {
+  const moves = tn.moves || [];
+  $("#tn-moves").innerHTML = tn.demo ? `<div class="empty small">Needs a real ESPN league.</div>` : moves.length
+    ? `<ol class="moves">${moves.map((m) => `<li>Add ${link(m.add)}, drop ${link(m.drop)}
+        <span class="good">+${num(m.gain, 1)} pts ${esc(tn.label)}</span></li>`).join("")}</ol>
+       <div class="sub">Only drops with no game ${esc(tn.label)} who are no better than 3+ free agents (someone like them can be picked up again).
+         Dropped players go on waivers for 2 days.</div>`
+    : `<div class="empty small">No add/drop is worth it ${esc(tn.label || "today")}: your open slots are covered, or nobody droppable has a free agent clearly better.</div>`;
+  if (!tn.players || !tn.players.length) { $("#tn-table").innerHTML = `<div class="empty small">No free agents playing.</div>`; return; }
+  table($("#tn-table"), [
+    { key: "name", label: "Player", num: false, html: (p) => facedLink(p.id, p.name, `${p.nba} · ${p.elig.join("/")}`) },
+    { key: "game", label: "Game", num: false, html: (p) => `${esc(p.game)}<div class="sub">${esc(p.time)}</div>` },
+    { key: "base", label: "Base", num: true, html: (p) => num(p.base, 1) },
+    { key: "proj", label: "Proj", num: true, html: (p) => `<b>${num(p.proj, 1)}</b>` },
+    { key: "edge", label: "Matchup", num: true, html: (p) => p.edge ? signed(p.edge, 0) + "%" : "even",
+      cls: (p) => p.edge >= 3 ? "good" : p.edge <= -3 ? "bad" : "" },
+    { key: "why", label: "Why", num: false, html: (p) => `<div class="why">${p.why.map(esc).join(" · ")}</div>` },
+  ], tn.players);
+}
+
+function renderOffers(offers) {
+  if (!offers.length) { $("#fa-offers").innerHTML = `<div class="empty small">No pending trade offers involving you.</div>`; return; }
+  const words = { accept: "worth accepting", even: "about even", decline: "costs you" };
+  table($("#fa-offers"), [
+    { key: "incoming", label: "", num: false, html: (o) => o.incoming ? "to you" : "yours" },
+    { key: "team", label: "Team", num: false, html: (o) => `${esc(o.team)}<div class="sub">${esc(o.proposed)}</div>` },
+    { key: "get", label: "You get", num: false, html: (o) => o.get.map(link).join(", ") },
+    { key: "send", label: "You give", num: false, html: (o) => o.send.map(link).join(", ") },
+    { key: "me", label: "You", num: true, html: (o) => signed(o.me, 0) },
+    { key: "them", label: "Them", num: true, html: (o) => signed(o.them, 0) },
+    { key: "verdict", label: "Verdict", num: false, html: (o) => words[o.verdict],
+      cls: (o) => o.verdict === "accept" ? "good" : o.verdict === "decline" ? "bad" : "" },
+  ], offers, { rowClass: () => "clickable" });
+  $("#fa-offers").querySelectorAll("tbody tr").forEach((tr) => tr.onclick = (e) => {
+    if (e.target.closest("[data-player]")) return;
+    const o = offers[tr.dataset.i];
+    openTrade(state.rosters.find((t) => t.me).id, o.team_id, o.send_ids, o.get_ids);
+  });
 }
 
 // ------------------------------------------------------------------ Trade Lab

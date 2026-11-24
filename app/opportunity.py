@@ -50,7 +50,8 @@ def _pool(league, size=300):
     if getattr(league, "_fh_pool", None) is None:
         rostered = [(p, t) for t in league.teams for p in t.roster]
         try:
-            free = [(p, None) for p in league.free_agents(size=size) if p.proTeam != "FA"]
+            from fantasy import free_agents
+            free = [(p, None) for p in free_agents(league, size) if p.proTeam != "FA"]
         except Exception:
             free = []
         league._fh_pool = rostered + free
